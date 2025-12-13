@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from telethon import TelegramClient
-
+from telethon.tl.types import PeerUser
 from telethon.sessions import StringSession
 
 from app.db.telegram.requests import get_tg_profile, get_tg_session, update_profile, update_session
@@ -10,32 +10,24 @@ from pathlib import Path
 from datetime import datetime
 import logging
 
+from app.services.auth import get_client
+
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-SESSIONS_DIR = "sessions"
 
-
-async def get_unread_messages(user_id: int, profile_id: int, db: AsyncSession, limit: int = 50):
+async def get_unread_messages(user_id: int, profile_id: int, db: AsyncSession):
+    """Получить непрочитанные сообщения для профиля"""
     try:
-        profile = await get_tg_profile(db, user_id, profile_id)
-        session = await get_tg_session(db, profile_id)
-
-        if not session.session_string:
-            return {"status": "error", "message": "Строка сессии не найдена"}
-
-        # Используем StringSession вместо файловой сессии
-        client = TelegramClient(
-            StringSession(session.session_string),
-            settings.API_ID,
-            settings.API_HASH
-        )
+        # Получаем клиент из БД
+        client, session_record = await get_client(profile_id, db)
 
         try:
             await client.connect()
 
             if not await client.is_user_authorized():
-                await update_profile(db, profile, is_authorized=False)
+                session_record.is_active = False
+                await db.commit()
                 return {"status": "error", "message": "Сессия истекла"}
 
             unread_messages = []
@@ -46,13 +38,23 @@ async def get_unread_messages(user_id: int, profile_id: int, db: AsyncSession, l
                     entity = dialog.entity
                     messages = await client.get_messages(
                         entity,
-                        limit=min(dialog.unread_count, limit)
+                        # limit=min(dialog.unread_count, limit)
                     )
 
                     for msg in messages:
+                        # Для каналов и групп - берем из самого сообщения
+                        sender_name = dialog.name  # Имя чата/канала
+
+                        # Если это личное сообщение от пользователя
+                        if msg.sender_id and msg.sender:
+                            if hasattr(msg.sender, 'first_name'):
+                                sender_name = msg.sender.first_name
+                            elif hasattr(msg.sender, 'username'):
+                                sender_name = msg.sender.username
+
                         unread_messages.append({
                             "id": msg.id,
-                            "from": msg.sender.first_name if msg.sender else "Unknown",
+                            "from": sender_name,
                             "text": msg.text or "[Медиа]",
                             "date": msg.date.isoformat(),
                             "chat_name": dialog.name,
@@ -64,6 +66,9 @@ async def get_unread_messages(user_id: int, profile_id: int, db: AsyncSession, l
                 if dialog.unread_count > 0:
                     await client.send_read_acknowledge(dialog.entity)
 
+            session_record.session_string = client.session.save()
+            await db.commit()
+
             return {
                 "status": "success",
                 "count": len(unread_messages),
@@ -74,17 +79,29 @@ async def get_unread_messages(user_id: int, profile_id: int, db: AsyncSession, l
             await client.disconnect()
 
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error(f"Error getting messages: {e}")
         return {"status": "error", "message": str(e)}
 
 
-async def send_message(user_id: int, profile_id: int, chat_id: int, text: str, db: AsyncSession):
+
+async def get_entity_safe(client, identifier):
+    if identifier.isdigit():
+        identifier = int(identifier)
+    try:
+        return await client.get_entity(identifier)
+    except ValueError:
+        # Если ID не в кэше, обновляем кэш
+        async for dialog in client.iter_dialogs():
+            if dialog.id == identifier:
+                return dialog.entity
+        raise ValueError(f"Entity {identifier} not found")
+
+
+
+async def send_message(db: AsyncSession, user_id: int, profile_id: int, text: str, tg_receiver: str):
     """Отправить сообщение от профиля"""
     try:
-        profile = db.query(TelegramProfile).filter(
-            TelegramProfile.id == profile_id,
-            TelegramProfile.user_id == user_id
-        ).first()
+        profile = await get_tg_profile(db, user_id, profile_id)
 
         if not profile:
             return {"status": "error", "message": "Профиль не найден"}
@@ -92,16 +109,12 @@ async def send_message(user_id: int, profile_id: int, chat_id: int, text: str, d
         if not profile.is_authorized:
             return {"status": "error", "message": "Профиль не авторизован"}
 
-        session = db.query(TelegramSession).filter(
-            TelegramSession.profile_id == profile_id,
-            TelegramSession.is_active == True
-        ).first()
+        session = await get_tg_session(db, profile_id)
 
         if not session:
             return {"status": "error", "message": "Сессия не найдена"}
 
-        session_file = session.session_file
-        client = TelegramClient(session_file, settings.API_ID, settings.API_HASH)
+        client, session_record = await get_client(profile_id, db)
 
         try:
             await client.connect()
@@ -109,12 +122,13 @@ async def send_message(user_id: int, profile_id: int, chat_id: int, text: str, d
             if not await client.is_user_authorized():
                 session.is_active = False
                 profile.is_authorized = False
-                db.commit()
+                await db.commit()
                 return {"status": "error", "message": "Сессия истекла"}
 
-            await client.send_message(chat_id, text)
+            entity = await get_entity_safe(client, tg_receiver)
+            await client.send_message(entity, text)
 
-            logger.info(f"Message sent from profile {profile_id} to chat {chat_id}")
+            logger.info(f"Message sent from profile {profile_id} to chat {tg_receiver}")
 
             return {"status": "success", "message": "Сообщение отправлено"}
 

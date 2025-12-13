@@ -5,11 +5,12 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 
 from app.config.config import get_settings
 from app.db.telegram.models import User, TelegramProfile, TelegramSession
 from app.db.telegram.requests import get_user_by_id, get_profile_by_phone, get_profile_by_user_and_phone, \
-    create_profile, update_profile, get_tg_profile, create_tg_session
+    create_profile, update_profile, get_tg_profile, create_tg_session, get_tg_session, update_session
 
 SESSIONS_DIR = "app/sessions"
 
@@ -20,11 +21,19 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-async def get_client(phone: str):
-    """Получить клиент Telethon"""
-    session_file = f"{SESSIONS_DIR}/{phone}"
-    client = TelegramClient(session_file, settings.API_ID, settings.API_HASH)
-    return client
+async def get_client(profile_id: int, db: AsyncSession):
+    """Получить клиент Telethon из StringSession"""
+
+    # Получаем сессию из БД
+    session_record = await get_tg_session(db, profile_id)
+
+    # Используем существующую сессию или создаем пустую
+    session_string = session_record.session_string if session_record else None
+    session = StringSession(session_string)
+
+    client = TelegramClient(session, settings.API_ID, settings.API_HASH)
+
+    return client, session_record
 
 
 async def start_auth(user_id: int, phone: str, db: AsyncSession):
@@ -53,26 +62,26 @@ async def start_auth(user_id: int, phone: str, db: AsyncSession):
                 "profile_id": profile.id,
             }
 
-        client = await get_client(phone)
+        if not profile:
+            profile = await create_profile(
+                db,
+                user_id=user_id,
+                phone=phone,
+                is_authorized=False,
+            )
+
+        client, session_record = await get_client(profile.id, db)
 
         if not client.is_connected():
             await client.connect()
 
         # Если уже авторизован в Telethon
         if await client.is_user_authorized():
-            if not profile:
-                profile = await create_profile(
-                    db,
-                    user_id=user_id,
-                    phone=phone,
-                    is_authorized=True,
-                )
-            else:
-                profile = await update_profile(
-                    db,
-                    profile,
-                    is_authorized=True,
-                )
+            profile = await update_profile(
+                db,
+                profile,
+                is_authorized=True,
+            )
 
             return {
                 "status": "already_authorized",
@@ -83,22 +92,19 @@ async def start_auth(user_id: int, phone: str, db: AsyncSession):
         # Отправить код
         result = await client.send_code_request(phone)
 
-        # Сохранить в БД
-        if not profile:
-            profile = await create_profile(
-                db,
-                user_id=user_id,
-                phone=phone,
-                is_authorized=False,
-                phone_code_hash=result.phone_code_hash,
-            )
-        else:
-            profile = await update_profile(
-                db,
-                profile,
-                phone_code_hash=result.phone_code_hash,
-            )
 
+        session_string = client.session.save()
+        if session_record:
+            # Обновить существующую сессию
+            await update_session(db, session_record, session_string=session_string)
+        else:
+            # Создать новую сессию
+            await create_tg_session(db, profile.id, session_string)
+        profile = await update_profile(
+            db,
+            profile,
+            phone_code_hash=result.phone_code_hash,
+        )
         logger.info(f"Auth started for user {user_id}, phone {phone}")
 
         return {
@@ -115,57 +121,57 @@ async def start_auth(user_id: int, phone: str, db: AsyncSession):
 
 async def verify_code(user_id: int, profile_id: int, code: str, db: AsyncSession):
     """Подтвердить код"""
-    try:
-        # Получить профиль
-        profile = await get_tg_profile(db, user_id, profile_id)
 
-        if not profile:
-            return {"status": "error", "message": "Профиль не найден"}
+    # Получить профиль
+    profile = await get_tg_profile(db, user_id, profile_id)
 
-        if not profile.phone_code_hash:
-            return {
-                "status": "error",
-                "message": "Сначала запроси код через /auth/start"
-            }
+    if not profile:
+        return {"status": "error", "message": "Профиль не найден"}
 
-        phone = profile.phone
-        client = await get_client(phone)
-
-        if not client.is_connected():
-            await client.connect()
-
-        # Используй сохраненный хеш
-        try:
-            await client.sign_in(
-                phone=phone,
-                code=code,
-                phone_code_hash=profile.phone_code_hash
-            )
-        except Exception as e:
-            logger.error(f"Sign in error: {e}")
-            raise
-
-        # Получить информацию о профиле
-        me = await client.get_me()
-
-        await update_profile(db, profile, is_authorized=True, phone_code_hash=None, first_name=me.first_name,
-                             last_name=me.last_name, username=me.username)
-
-        await create_tg_session(db, profile_id, f"{SESSIONS_DIR}/{phone}")
-
-        logger.info(f"User {user_id} authorized profile {profile_id}")
-
+    if not profile.phone_code_hash:
         return {
-            "status": "success",
-            "message": "Авторизация успешна",
-            "profile_id": profile.id,
-            "phone": phone,
-            "username": me.username
+            "status": "error",
+            "message": "Сначала запроси код через /auth/start"
         }
 
+    phone = profile.phone
+    client, session_record = await get_client(profile_id, db)
+
+    if not client.is_connected():
+        await client.connect()
+
+    # Используй сохраненный хеш
+    try:
+        await client.sign_in(
+            phone=phone,
+            code=code,
+            phone_code_hash=profile.phone_code_hash
+        )
     except Exception as e:
-        logger.error(f"Code verification error: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Sign in error: {e}")
+        raise
+
+    # Получить информацию о профиле
+    me = await client.get_me()
+
+    await update_profile(db, profile, is_authorized=True, phone_code_hash=None, first_name=me.first_name,
+                         last_name=me.last_name, username=me.username)
+
+    await create_tg_session(db, profile_id, client.session.save())
+
+    logger.info(f"User {user_id} authorized profile {profile_id}")
+
+    return {
+        "status": "success",
+        "message": "Авторизация успешна",
+        "profile_id": profile.id,
+        "phone": phone,
+        "username": me.username
+    }
+
+    # except Exception as e:
+    #     logger.error(f"Code verification error: {e}")
+    #     return {"status": "error", "message": str(e)}
 
 # async def verify_password(user_id: int, profile_id: int, password: str, db: AsyncSession):
 #     """Подтвердить пароль 2FA"""

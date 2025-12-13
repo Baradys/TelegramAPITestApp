@@ -116,10 +116,10 @@ async def get_tg_profile(session: AsyncSession, user_id, profile_id) -> Telegram
 async def create_tg_session(
         session: AsyncSession,
         profile_id,
-        session_file):
+        session_string):
     tg_session = TelegramSession(
         profile_id=profile_id,
-        session_file=session_file,
+        session_string=session_string,
         is_active=True
     )
     async with session as session:
@@ -139,9 +139,12 @@ async def update_session(
         tg_session: TelegramSession,
         *,
         is_active: bool | None = None,
+        session_string: str | None = None,
 ) -> TelegramSession:
     if is_active is not None:
         tg_session.is_active = is_active
+    if session_string is not None:
+        tg_session.session_string = session_string
     async with session as session:
         session.add(tg_session)
         await session.commit()

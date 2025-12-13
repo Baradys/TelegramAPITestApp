@@ -41,7 +41,7 @@ class TelegramSession(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     profile_id = Column(Integer, ForeignKey("telegram_profiles.id"), index=True)
-    session_file = Column(String(255), unique=True)
+    session_string = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.now)
     last_used = Column(DateTime, default=datetime.now)

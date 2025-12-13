@@ -10,9 +10,9 @@ from app.db.telegram.models import User
 from app.db.telegram.requests import get_app_user, create_user
 from app.middleware.jwt import create_access_token, get_current_user
 from app.models.base_model import PhoneRequest, TokenResponse, CodeRequest, RegisterRequest, LoginRequest, \
-    MessagesRequest
+    MessagesRequest, SendMessageRequest, DialogsRequest
 from app.services.auth import start_auth, verify_code
-from app.services.messages import get_unread_messages
+from app.services.messages import get_unread_messages, send_message
 
 router = APIRouter()
 
@@ -23,6 +23,50 @@ logger = logging.getLogger(__name__)
 async def get_redis():
     """Dependency для получения Redis клиента"""
     return get_redis_client()
+
+
+@router.post("/auth/register", response_model=TokenResponse)
+async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        existing_user = await get_app_user(db, request.email)
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        password_hash = hashlib.sha256(request.password.encode()).hexdigest()
+        user = await create_user(db, request.email, password_hash)
+
+        token = create_access_token(user.id)
+
+        logger.info(f"User {request.email} registered")
+
+        return {
+            "access_token": token,
+            "token_type": "bearer"
+        }
+
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/auth/login", response_model=TokenResponse)
+async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        user = await get_app_user(db, request.email)
+        password_hash = hashlib.sha256(request.password.encode()).hexdigest()
+        if not user or user.password_hash != password_hash:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        token = create_access_token(user.id)
+
+        logger.info(f"User {request.email} logged in")
+
+        return {
+            "access_token": token,
+            "token_type": "bearer"
+        }
+
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(status_code=401, detail=str(e))
 
 
 @router.post("/profiles/start")
@@ -80,50 +124,6 @@ async def auth_verify_code(
 #     }
 
 
-@router.post("/auth/register", response_model=TokenResponse)
-async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    try:
-        existing_user = await get_app_user(db, request.email)
-        if existing_user:
-            raise HTTPException(status_code=400, detail="Email already registered")
-        password_hash = hashlib.sha256(request.password.encode()).hexdigest()
-        user = await create_user(db, request.email, password_hash)
-
-        token = create_access_token(user.id)
-
-        logger.info(f"User {request.email} registered")
-
-        return {
-            "access_token": token,
-            "token_type": "bearer"
-        }
-
-    except Exception as e:
-        logger.error(f"Registration error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/auth/login", response_model=TokenResponse)
-async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
-    try:
-        user = await get_app_user(db, request.email)
-        password_hash = hashlib.sha256(request.password.encode()).hexdigest()
-        if not user or user.password_hash != password_hash:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-        token = create_access_token(user.id)
-
-        logger.info(f"User {request.email} logged in")
-
-        return {
-            "access_token": token,
-            "token_type": "bearer"
-        }
-
-    except Exception as e:
-        logger.error(f"Login error: {e}")
-        raise HTTPException(status_code=401, detail=str(e))
-
-
 @router.post("/messages/unread")
 async def get_messages_endpoint(
         request: MessagesRequest,
@@ -131,9 +131,40 @@ async def get_messages_endpoint(
         db: AsyncSession = Depends(get_db)
 ):
 
-    result = await get_unread_messages(user.id, request.profile_id, db, request.limit)
+    result = await get_unread_messages(user.id, request.profile_id, db)
 
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
 
     return result
+
+
+@router.post("/messages/send")
+async def send_message_endpoint(
+        request: SendMessageRequest,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+):
+    """Отправить сообщение от профиля"""
+    result = await send_message(db, user.id, request.profile_id, request.text, request.tg_receiver)
+
+    if result["status"] == "error":
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    return result
+
+
+# @router.post("/messages/dialogs")
+# async def get_dialogs_endpoint(
+#         request: DialogsRequest,
+#         user: User = Depends(get_current_user),
+#         db: AsyncSession = Depends(get_db)
+# ):
+#     """Получить список диалогов профиля"""
+#
+#     result = await get_dialogs(user.id, request.profile_id, db, request.limit)
+#
+#     if result["status"] == "error":
+#         raise HTTPException(status_code=400, detail=result["message"])
+#
+#     return result
