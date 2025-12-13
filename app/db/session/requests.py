@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.profile.models import TelegramProfile
 from app.db.session.models import TelegramSession
 
 
@@ -18,8 +19,21 @@ async def create_tg_session(
         await session.commit()
 
 
-async def get_tg_session(session: AsyncSession, profile_id) -> TelegramSession:
-    stmt = select(TelegramSession).where(TelegramSession.profile_id == profile_id, TelegramSession.is_active == True)
+async def get_tg_session(
+        session: AsyncSession,
+        profile_username: str,
+) -> TelegramSession:
+    stmt = (
+        select(TelegramSession)
+        .join(
+            TelegramProfile,
+            TelegramProfile.id == TelegramSession.profile_id,
+        )
+        .where(
+            TelegramProfile.username == profile_username,
+            TelegramSession.is_active.is_(True),
+        )
+    )
     async with session as session:
         result = await session.execute(stmt)
         return result.unique().scalar()

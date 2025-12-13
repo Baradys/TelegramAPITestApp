@@ -57,7 +57,7 @@ class ProfilesRouter:
             db: AsyncSession = Depends(get_db)
     ):
         """Подтвердить код"""
-        result = await verify_code(db, user.id, request.profile_id, request.code)
+        result = await verify_code(db, user.id, request.profile_username, request.code)
 
         if result["status"] != "success":
             raise HTTPException(status_code=400, detail=result["message"])

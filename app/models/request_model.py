@@ -16,26 +16,26 @@ class PhoneRequest(BaseModel):
 
 
 class CodeRequest(BaseModel):
-    profile_id: int
+    profile_username: str
     code: str
 
 
 class PasswordRequest(BaseModel):
-    profile_id: int
+    profile_username: str
     password: str
 
 
 class MessagesRequest(BaseModel):
-    profile_id: int
+    profile_username: str
     limit: int = 50
 
 
 class SendMessageRequest(BaseModel):
-    profile_id: int
+    profile_username: str
     text: str
     tg_receiver: str
 
 
 class DialogsRequest(BaseModel):
-    profile_id: int
+    profile_username: str
     limit: int = 50

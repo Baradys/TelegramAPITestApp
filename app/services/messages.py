@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 async def _prepare_authorized_client(
         db,
         user_id: int,
-        profile_id: int,
+        profile_username: str,
 ):
     """
     Общая подготовка клиента:
@@ -28,18 +28,18 @@ async def _prepare_authorized_client(
       - client: TelegramClient или None
       - session_record: объект записи сессии или None
     """
-    profile = await get_tg_profile(db, user_id, profile_id)
+    profile = await get_tg_profile(db, user_id, profile_username)
     if not profile:
         return {"status": "error", "message": "Профиль не найден"}, None, None
 
     if not profile.is_authorized:
         return {"status": "error", "message": "Профиль не авторизован"}, None, None
 
-    session = await get_tg_session(db, profile_id)
+    session = await get_tg_session(db, profile_username)
     if not session:
         return {"status": "error", "message": "Сессия не найдена"}, None, None
 
-    client, session_record = await get_client(profile_id, db)
+    client, session_record = await get_client(db, profile_username)
 
     try:
         await client.connect()
@@ -60,7 +60,7 @@ async def _prepare_authorized_client(
 async def get_unread_messages(
         db: AsyncSession,
         user_id: int,
-        profile_id: int,
+        profile_username: str,
         limit: int = 50,
 ):
     """Получить непрочитанные сообщения для профиля"""
@@ -68,7 +68,7 @@ async def get_unread_messages(
         error, client, session_record = await _prepare_authorized_client(
             db=db,
             user_id=user_id,
-            profile_id=profile_id,
+            profile_username=profile_username,
         )
         if error:
             return error
@@ -141,13 +141,13 @@ async def get_entity_safe(client, identifier):
         raise ValueError(f"Entity {identifier} not found")
 
 
-async def send_message(db: AsyncSession, user_id: int, profile_id: int, text: str, tg_receiver: str):
+async def send_message(db: AsyncSession, user_id: int, profile_username: str, text: str, tg_receiver: str):
     """Отправить сообщение от профиля"""
     try:
         error, client, session_record = await _prepare_authorized_client(
             db=db,
             user_id=user_id,
-            profile_id=profile_id,
+            profile_username=profile_username,
         )
         if error:
             return error
@@ -155,24 +155,24 @@ async def send_message(db: AsyncSession, user_id: int, profile_id: int, text: st
         try:
             entity = await get_entity_safe(client, tg_receiver)
             await client.send_message(entity, text)
-            logger.info(f"Message sent from profile {profile_id} to chat {tg_receiver}")
+            logger.info(f"Message sent from profile {profile_username} to chat {tg_receiver}")
             return {"status": "success", "message": "Сообщение отправлено"}
 
         finally:
             await client.disconnect()
 
     except Exception as e:
-        logger.error(f"Error sending message from profile {profile_id}: {e}")
+        logger.error(f"Error sending message from profile {profile_username}: {e}")
         return {"status": "error", "message": str(e)}
 
 
-async def get_dialogs(user_id: int, profile_id: int, db: AsyncSession, limit: int = 50):
+async def get_dialogs(user_id: int, profile_username: str, db: AsyncSession, limit: int = 50):
     """Получить список диалогов"""
     try:
         error, client, session_record = await _prepare_authorized_client(
             db=db,
             user_id=user_id,
-            profile_id=profile_id,
+            profile_username=profile_username,
         )
         if error:
             return error
@@ -198,5 +198,5 @@ async def get_dialogs(user_id: int, profile_id: int, db: AsyncSession, limit: in
             await client.disconnect()
 
     except Exception as e:
-        logger.error(f"Error getting dialogs for profile {profile_id}: {e}")
+        logger.error(f"Error getting dialogs for profile {profile_username}: {e}")
         return {"status": "error", "message": str(e)}

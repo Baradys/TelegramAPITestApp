@@ -29,7 +29,7 @@ class MessagesRouter:
             user: User = Depends(get_current_user),
             db: AsyncSession = Depends(get_db)
     ):
-        result = await get_unread_messages(db, user.id, request.profile_id, request.limit)
+        result = await get_unread_messages(db, user.id, request.profile_username, request.limit)
 
         if result["status"] == "error":
             raise HTTPException(status_code=400, detail=result["message"])
@@ -43,7 +43,7 @@ class MessagesRouter:
             db: AsyncSession = Depends(get_db)
     ):
         """Отправить сообщение от профиля"""
-        result = await send_message(db, user.id, request.profile_id, request.text, request.tg_receiver)
+        result = await send_message(db, user.id, request.profile_username, request.text, request.tg_receiver)
 
         if result["status"] == "error":
             raise HTTPException(status_code=400, detail=result["message"])
@@ -57,7 +57,7 @@ class MessagesRouter:
             db: AsyncSession = Depends(get_db)
     ):
         """Получить список диалогов профиля"""
-        result = await get_dialogs(user.id, request.profile_id, db, request.limit)
+        result = await get_dialogs(user.id, request.profile_username, db, request.limit)
 
         if result["status"] == "error":
             raise HTTPException(status_code=400, detail=result["message"])

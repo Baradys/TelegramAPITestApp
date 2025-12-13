@@ -80,7 +80,7 @@ class AuthRouter:
             db: AsyncSession = Depends(get_db)
     ):
         """Подтвердить пароль 2FA"""
-        result = await verify_password(db, user.id, request.profile_id, request.password)
+        result = await verify_password(db, user.id, request.profile_username, request.password)
 
         if result["status"] != "success":
             raise HTTPException(status_code=400, detail=result["message"])

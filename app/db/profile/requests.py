@@ -76,8 +76,8 @@ async def update_profile(
         return profile
 
 
-async def get_tg_profile(session: AsyncSession, user_id, profile_id) -> TelegramProfile:
-    stmt = select(TelegramProfile).where(TelegramProfile.id == profile_id, TelegramProfile.user_id == user_id)
+async def get_tg_profile(session: AsyncSession, user_id, profile_username) -> TelegramProfile:
+    stmt = select(TelegramProfile).where(TelegramProfile.username == profile_username, TelegramProfile.user_id == user_id)
     async with session as session:
         result = await session.execute(stmt)
         return result.unique().scalar()
