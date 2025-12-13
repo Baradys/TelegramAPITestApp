@@ -3,16 +3,6 @@ from datetime import datetime
 from app.db.base import Base
 
 
-class User(Base):
-    """Основной пользователь системы"""
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, index=True)
-    password_hash = Column(String(255))
-    created_at = Column(DateTime, default=datetime.now)
-
-
 
 class TelegramProfile(Base):
     """Профиль Telegram (номер телефона)"""
@@ -31,15 +21,3 @@ class TelegramProfile(Base):
     first_name = Column(String(255), nullable=True)
     last_name = Column(String(255), nullable=True)
     username = Column(String(255), nullable=True)
-
-
-class TelegramSession(Base):
-    """Сессия для каждого профиля"""
-    __tablename__ = "telegram_sessions"
-
-    id = Column(Integer, primary_key=True, index=True)
-    profile_id = Column(Integer, ForeignKey("telegram_profiles.id"), index=True)
-    session_string = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.now)
-    last_used = Column(DateTime, default=datetime.now)

@@ -1,41 +1,10 @@
 from datetime import datetime
-from typing import Sequence
 
+from typing import Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.telegram.models import User, TelegramProfile, TelegramSession
-
-
-async def get_user_by_id(session: AsyncSession, user_id: int) -> User:
-    stmt = select(User).where(User.id == user_id)
-    async with session as session:
-        result = await session.execute(stmt)
-        return result.unique().scalar()
-
-
-async def get_app_user(session: AsyncSession, email) -> User:
-    stmt = select(User).where(User.email == email)
-    async with session as session:
-        result = await session.execute(stmt)
-        return result.unique().scalar()
-
-
-async def create_user(
-        session: AsyncSession,
-        email,
-        password_hash
-
-):
-    user = User(
-        email=email,
-        password_hash=password_hash
-    )
-    async with session as session:
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-        return user
+from app.db.profile.models import TelegramProfile
 
 
 async def get_profile_by_phone(session: AsyncSession, phone: str) -> TelegramProfile | None:
@@ -118,44 +87,3 @@ async def get_users_profiles(session: AsyncSession, user_id) -> Sequence[Telegra
     async with session as session:
         result = await session.execute(stmt)
         return result.unique().scalars().all()
-
-
-async def create_tg_session(
-        session: AsyncSession,
-        profile_id,
-        session_string):
-    tg_session = TelegramSession(
-        profile_id=profile_id,
-        session_string=session_string,
-        is_active=True
-    )
-    async with session as session:
-        session.add(tg_session)
-        await session.commit()
-
-
-async def get_tg_session(session: AsyncSession, profile_id) -> TelegramSession:
-    stmt = select(TelegramSession).where(TelegramSession.profile_id == profile_id, TelegramSession.is_active == True)
-    async with session as session:
-        result = await session.execute(stmt)
-        return result.unique().scalar()
-
-
-async def update_session(
-        session: AsyncSession,
-        tg_session: TelegramSession,
-        *,
-        is_active: bool | None = None,
-        session_string: str | None = None,
-) -> TelegramSession:
-    if is_active is not None:
-        tg_session.is_active = is_active
-    if session_string is not None:
-        tg_session.session_string = session_string
-    async with session as session:
-        session.add(tg_session)
-        await session.commit()
-        await session.refresh(tg_session)
-        return tg_session
-
-

@@ -4,14 +4,13 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 import logging
 
 from app.config.config import get_settings
 from app.db.database import get_db
-from app.db.telegram.models import User
-from app.db.telegram.requests import get_user_by_id
+from app.db.user.models import User
+from app.db.user.requests import get_user_by_id
 
 settings = get_settings()
 logger = logging.getLogger(__name__)

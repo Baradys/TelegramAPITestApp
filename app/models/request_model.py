@@ -39,15 +39,3 @@ class SendMessageRequest(BaseModel):
 class DialogsRequest(BaseModel):
     profile_id: int
     limit: int = 50
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-
-
-class UserResponse(BaseModel):
-    id: int
-    email: str
-    created_at: str
-    api_calls_today: int

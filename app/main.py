@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from app.db.base import Base
 from app.db.database import engine
 from app.db.redis import init_redis, close_redis
-from app.src.router import router
+from app.routers.router import router
 
 
 async def init_models():
@@ -28,7 +28,7 @@ async def lifespan(_: FastAPI):
 def get_application():
     application = FastAPI(
         title="API Service",
-        description="API Service for barrier control",
+        description="Telegram API Service for message management",
         version="1.0.0",
         docs_url="/docs",
         redoc_url="/redoc",

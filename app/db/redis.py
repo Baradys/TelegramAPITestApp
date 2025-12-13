@@ -1,4 +1,3 @@
-import os
 from contextlib import asynccontextmanager
 from redis import asyncio as aioredis
 from app.config.config import get_settings

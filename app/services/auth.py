@@ -6,9 +6,10 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 
 from app.config.config import get_settings
-from app.db.telegram.requests import get_user_by_id, get_profile_by_phone, get_profile_by_user_and_phone, \
-    create_profile, update_profile, get_tg_profile, create_tg_session, get_tg_session, update_session, \
-    get_users_profiles
+from app.db.profile.requests import get_profile_by_phone, get_profile_by_user_and_phone, create_profile, update_profile, \
+    get_tg_profile, get_users_profiles
+from app.db.session.requests import get_tg_session, update_session, create_tg_session
+from app.db.user.requests import get_user_by_id
 
 SESSIONS_DIR = "app/sessions"
 
@@ -17,6 +18,38 @@ Path(SESSIONS_DIR).mkdir(exist_ok=True)
 settings = get_settings()
 
 logger = logging.getLogger(__name__)
+
+
+async def _prepare_client_for_profile(
+        db,
+        user_id: int,
+        profile_id: int,
+        require_phone_code_hash: bool = True,
+):
+    """
+    Возвращает (profile, client, session_record) или словарь-ошибку.
+
+    require_phone_code_hash:
+      - True  — проверять наличие profile.phone_code_hash
+      - False — не проверять (если где‑то это не нужно)
+    """
+    profile = await get_tg_profile(db, user_id, profile_id)
+
+    if not profile:
+        return {"status": "error", "message": "Профиль не найден"}
+
+    if require_phone_code_hash and not profile.phone_code_hash:
+        return {
+            "status": "error",
+            "message": "Сначала запроси код через /auth/start",
+        }
+
+    client, session_record = await get_client(profile_id, db)
+
+    if not client.is_connected():
+        await client.connect()
+
+    return profile, client, session_record
 
 
 async def get_client(profile_id: int, db: AsyncSession):
@@ -119,20 +152,13 @@ async def start_auth(db: AsyncSession, user_id: int, phone: str):
 async def verify_code(db: AsyncSession, user_id: int, profile_id: int, code: str):
     """Подтвердить код"""
     try:
-        # Получить профиль
-        profile = await get_tg_profile(db, user_id, profile_id)
+        result = await _prepare_client_for_profile(db, user_id, profile_id)
 
-        if not profile:
-            return {"status": "error", "message": "Профиль не найден"}
+        # Если вернулся словарь — это ошибка, сразу отдаём в ответ
+        if isinstance(result, dict):
+            return result
 
-        if not profile.phone_code_hash:
-            return {
-                "status": "error",
-                "message": "Сначала запроси код через /auth/start"
-            }
-
-        phone = profile.phone
-        client, session_record = await get_client(profile_id, db)
+        profile, client, session_record = result
 
         if not client.is_connected():
             await client.connect()
@@ -140,7 +166,7 @@ async def verify_code(db: AsyncSession, user_id: int, profile_id: int, code: str
         # Используй сохраненный хеш
         try:
             await client.sign_in(
-                phone=phone,
+                phone=profile.phone,
                 code=code,
                 phone_code_hash=profile.phone_code_hash
             )
@@ -161,7 +187,7 @@ async def verify_code(db: AsyncSession, user_id: int, profile_id: int, code: str
             "status": "success",
             "message": "Авторизация успешна",
             "profile_id": profile.id,
-            "phone": phone,
+            "phone": profile.phone,
             "username": me.username
         }
 
@@ -173,19 +199,13 @@ async def verify_code(db: AsyncSession, user_id: int, profile_id: int, code: str
 async def verify_password(db: AsyncSession, user_id: int, profile_id: int, password: str):
     """Подтвердить пароль 2FA"""
     try:
-        profile = await get_tg_profile(db, user_id, profile_id)
+        result = await _prepare_client_for_profile(db, user_id, profile_id)
 
-        if not profile:
-            return {"status": "error", "message": "Профиль не найден"}
+        # Если вернулся словарь — это ошибка, сразу отдаём в ответ
+        if isinstance(result, dict):
+            return result
 
-        if not profile.phone_code_hash:
-            return {
-                "status": "error",
-                "message": "Сначала запроси код через /auth/start"
-            }
-
-        phone = profile.phone
-        client, session_record = await get_client(profile_id, db)
+        profile, client, session_record = result
 
         if not client.is_connected():
             await client.connect()
