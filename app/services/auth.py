@@ -1,6 +1,4 @@
 import logging
-import os
-from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,9 +6,9 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 
 from app.config.config import get_settings
-from app.db.telegram.models import User, TelegramProfile, TelegramSession
 from app.db.telegram.requests import get_user_by_id, get_profile_by_phone, get_profile_by_user_and_phone, \
-    create_profile, update_profile, get_tg_profile, create_tg_session, get_tg_session, update_session
+    create_profile, update_profile, get_tg_profile, create_tg_session, get_tg_session, update_session, \
+    get_users_profiles
 
 SESSIONS_DIR = "app/sessions"
 
@@ -36,7 +34,7 @@ async def get_client(profile_id: int, db: AsyncSession):
     return client, session_record
 
 
-async def start_auth(user_id: int, phone: str, db: AsyncSession):
+async def start_auth(db: AsyncSession, user_id: int, phone: str):
     """Начать процесс авторизации для профиля"""
     try:
         # Проверить, что пользователь существует
@@ -92,7 +90,6 @@ async def start_auth(user_id: int, phone: str, db: AsyncSession):
         # Отправить код
         result = await client.send_code_request(phone)
 
-
         session_string = client.session.save()
         if session_record:
             # Обновить существующую сессию
@@ -119,138 +116,129 @@ async def start_auth(user_id: int, phone: str, db: AsyncSession):
         return {"status": "error", "message": str(e)}
 
 
-async def verify_code(user_id: int, profile_id: int, code: str, db: AsyncSession):
+async def verify_code(db: AsyncSession, user_id: int, profile_id: int, code: str):
     """Подтвердить код"""
+    try:
+        # Получить профиль
+        profile = await get_tg_profile(db, user_id, profile_id)
 
-    # Получить профиль
-    profile = await get_tg_profile(db, user_id, profile_id)
+        if not profile:
+            return {"status": "error", "message": "Профиль не найден"}
 
-    if not profile:
-        return {"status": "error", "message": "Профиль не найден"}
+        if not profile.phone_code_hash:
+            return {
+                "status": "error",
+                "message": "Сначала запроси код через /auth/start"
+            }
 
-    if not profile.phone_code_hash:
+        phone = profile.phone
+        client, session_record = await get_client(profile_id, db)
+
+        if not client.is_connected():
+            await client.connect()
+
+        # Используй сохраненный хеш
+        try:
+            await client.sign_in(
+                phone=phone,
+                code=code,
+                phone_code_hash=profile.phone_code_hash
+            )
+        except Exception as e:
+            logger.error(f"Sign in error: {e}")
+            raise
+        session_string = client.session.save()
+        await update_session(db, session_record, session_string=session_string)
+        # Получить информацию о профиле
+        me = await client.get_me()
+
+        await update_profile(db, profile, is_authorized=True, phone_code_hash=None, first_name=me.first_name,
+                             last_name=me.last_name, username=me.username)
+
+        logger.info(f"User {user_id} authorized profile {profile_id}")
+
         return {
-            "status": "error",
-            "message": "Сначала запроси код через /auth/start"
+            "status": "success",
+            "message": "Авторизация успешна",
+            "profile_id": profile.id,
+            "phone": phone,
+            "username": me.username
         }
 
-    phone = profile.phone
-    client, session_record = await get_client(profile_id, db)
-
-    if not client.is_connected():
-        await client.connect()
-
-    # Используй сохраненный хеш
-    try:
-        await client.sign_in(
-            phone=phone,
-            code=code,
-            phone_code_hash=profile.phone_code_hash
-        )
     except Exception as e:
-        logger.error(f"Sign in error: {e}")
-        raise
-
-    # Получить информацию о профиле
-    me = await client.get_me()
-
-    await update_profile(db, profile, is_authorized=True, phone_code_hash=None, first_name=me.first_name,
-                         last_name=me.last_name, username=me.username)
-
-    await create_tg_session(db, profile_id, client.session.save())
-
-    logger.info(f"User {user_id} authorized profile {profile_id}")
-
-    return {
-        "status": "success",
-        "message": "Авторизация успешна",
-        "profile_id": profile.id,
-        "phone": phone,
-        "username": me.username
-    }
-
-    # except Exception as e:
-    #     logger.error(f"Code verification error: {e}")
-    #     return {"status": "error", "message": str(e)}
-
-# async def verify_password(user_id: int, profile_id: int, password: str, db: AsyncSession):
-#     """Подтвердить пароль 2FA"""
-#     try:
-#         profile = db.query(TelegramProfile).filter(
-#             TelegramProfile.id == profile_id,
-#             TelegramProfile.user_id == user_id
-#         ).first()
-#
-#         if not profile:
-#             return {"status": "error", "message": "Профиль не найден"}
-#
-#         phone = profile.phone
-#         client = await get_client(phone)
-#
-#         if not client.is_connected():
-#             await client.connect()
-#
-#         await client.sign_in(password=password)
-#
-#         # Получить информацию о профиле
-#         me = await client.get_me()
-#
-#         # Обновить профиль
-#         profile.is_authorized = True
-#         profile.last_login = datetime.now()
-#         profile.phone_code_hash = None
-#         profile.first_name = me.first_name
-#         profile.last_name = me.last_name
-#         profile.username = me.username
-#         db.commit()
-#
-#         # Создать сессию
-#         session = TelegramSession(
-#             profile_id=profile.id,
-#             session_file=f"{SESSIONS_DIR}/{phone}",
-#             is_active=True
-#         )
-#         db.add(session)
-#         db.commit()
-#
-#         logger.info(f"User {user_id} authorized profile {profile_id} with password")
-#
-#         return {
-#             "status": "success",
-#             "message": "Авторизация успешна",
-#             "profile_id": profile.id
-#         }
-#
-#     except Exception as e:
-#         logger.error(f"Password verification error: {e}")
-#         return {"status": "error", "message": str(e)}
+        logger.error(f"Code verification error: {e}")
+        return {"status": "error", "message": str(e)}
 
 
-# async def get_user_profiles(user_id: int, db: AsyncSession):
-#     """Получить все профили пользователя"""
-#     try:
-#         profiles = db.query(TelegramProfile).filter(
-#             TelegramProfile.user_id == user_id
-#         ).all()
-#
-#         return {
-#             "status": "success",
-#             "profiles": [
-#                 {
-#                     "id": p.id,
-#                     "phone": p.phone,
-#                     "is_authorized": p.is_authorized,
-#                     "is_active": p.is_active,
-#                     "first_name": p.first_name,
-#                     "last_name": p.last_name,
-#                     "username": p.username,
-#                     "created_at": p.created_at.isoformat(),
-#                     "last_login": p.last_login.isoformat() if p.last_login else None
-#                 }
-#                 for p in profiles
-#             ]
-#         }
-#
-#     except Exception as e:
-#         logger.error(f"Error getting profiles for user {user_id}: {e}")
-#         return {"status": "error", "message": str(e)}
+async def verify_password(db: AsyncSession, user_id: int, profile_id: int, password: str):
+    """Подтвердить пароль 2FA"""
+    try:
+        profile = await get_tg_profile(db, user_id, profile_id)
+
+        if not profile:
+            return {"status": "error", "message": "Профиль не найден"}
+
+        if not profile.phone_code_hash:
+            return {
+                "status": "error",
+                "message": "Сначала запроси код через /auth/start"
+            }
+
+        phone = profile.phone
+        client, session_record = await get_client(profile_id, db)
+
+        if not client.is_connected():
+            await client.connect()
+
+        await client.sign_in(password=password)
+
+        # Получить информацию о профиле
+        me = await client.get_me()
+
+        # Обновить профиль
+        await update_profile(db, profile, is_authorized=True, phone_code_hash=None, first_name=me.first_name,
+                             last_name=me.last_name, username=me.username)
+
+        # Создать сессию
+
+        session_string = client.session.save()
+        await update_session(db, session_record, session_string=session_string)
+
+        logger.info(f"User {user_id} authorized profile {profile_id} with password")
+
+        return {
+            "status": "success",
+            "message": "Авторизация успешна",
+            "profile_id": profile.id
+        }
+
+    except Exception as e:
+        logger.error(f"Password verification error: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+async def get_user_profiles(db: AsyncSession, user_id: int):
+    """Получить все профили пользователя"""
+    try:
+        profiles = await  get_users_profiles(db, user_id)
+        return {
+            "status": "success",
+            "profiles": [
+                {
+                    "id": p.id,
+                    "phone": p.phone,
+                    "is_authorized": p.is_authorized,
+                    "is_active": p.is_active,
+                    "first_name": p.first_name,
+                    "last_name": p.last_name,
+                    "username": p.username,
+                    "created_at": p.created_at.isoformat(),
+                    "last_login": p.last_login.isoformat() if p.last_login else None
+                }
+                for p in profiles
+            ]
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting profiles for user {user_id}: {e}")
+        return {"status": "error", "message": str(e)}

@@ -11,7 +11,6 @@ class User(Base):
     email = Column(String(255), unique=True, index=True)
     password_hash = Column(String(255))
     created_at = Column(DateTime, default=datetime.now)
-    last_login = Column(DateTime, nullable=True)
 
 
 
@@ -32,7 +31,6 @@ class TelegramProfile(Base):
     first_name = Column(String(255), nullable=True)
     last_name = Column(String(255), nullable=True)
     username = Column(String(255), nullable=True)
-    profile_photo_id = Column(String(255), nullable=True)
 
 
 class TelegramSession(Base):
@@ -45,14 +43,3 @@ class TelegramSession(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.now)
     last_used = Column(DateTime, default=datetime.now)
-
-
-class MessageCache(Base):
-    """Кэш сообщений"""
-    __tablename__ = "message_cache"
-
-    id = Column(Integer, primary_key=True, index=True)
-    profile_id = Column(Integer, ForeignKey("telegram_profiles.id"), index=True)
-    message_data = Column(Text)  # JSON
-    created_at = Column(DateTime, default=datetime.now)
-    expires_at = Column(DateTime)

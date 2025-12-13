@@ -1,13 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from telethon import TelegramClient
-from telethon.tl.types import PeerUser
-from telethon.sessions import StringSession
 
-from app.db.telegram.requests import get_tg_profile, get_tg_session, update_profile, update_session
-from app.db.telegram.models import TelegramProfile, TelegramSession, MessageCache
+from app.db.telegram.requests import get_tg_profile, get_tg_session, update_session, update_profile
 from app.config.config import get_settings
-from pathlib import Path
-from datetime import datetime
 import logging
 
 from app.services.auth import get_client
@@ -16,18 +10,30 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-async def get_unread_messages(user_id: int, profile_id: int, db: AsyncSession):
+async def get_unread_messages(db: AsyncSession, user_id: int, profile_id: int, limit=50):
     """Получить непрочитанные сообщения для профиля"""
     try:
-        # Получаем клиент из БД
+        profile = await get_tg_profile(db, user_id, profile_id)
+
+        if not profile:
+            return {"status": "error", "message": "Профиль не найден"}
+
+        if not profile.is_authorized:
+            return {"status": "error", "message": "Профиль не авторизован"}
+
+        session = await get_tg_session(db, profile_id)
+
+        if not session:
+            return {"status": "error", "message": "Сессия не найдена"}
+
         client, session_record = await get_client(profile_id, db)
 
         try:
             await client.connect()
 
             if not await client.is_user_authorized():
-                session_record.is_active = False
-                await db.commit()
+                await update_session(db, session_record, is_active=False)
+                await update_profile(db, profile, is_authorized=False)
                 return {"status": "error", "message": "Сессия истекла"}
 
             unread_messages = []
@@ -38,7 +44,7 @@ async def get_unread_messages(user_id: int, profile_id: int, db: AsyncSession):
                     entity = dialog.entity
                     messages = await client.get_messages(
                         entity,
-                        # limit=min(dialog.unread_count, limit)
+                        limit=min(dialog.unread_count, limit)
                     )
 
                     for msg in messages:
@@ -90,7 +96,6 @@ async def get_entity_safe(client, identifier):
     try:
         return await client.get_entity(identifier)
     except ValueError:
-        # Если ID не в кэше, обновляем кэш
         async for dialog in client.iter_dialogs():
             if dialog.id == identifier:
                 return dialog.entity
@@ -120,9 +125,8 @@ async def send_message(db: AsyncSession, user_id: int, profile_id: int, text: st
             await client.connect()
 
             if not await client.is_user_authorized():
-                session.is_active = False
-                profile.is_authorized = False
-                await db.commit()
+                await update_session(db, session_record, is_active=False)
+                await update_profile(db, profile, is_authorized=False)
                 return {"status": "error", "message": "Сессия истекла"}
 
             entity = await get_entity_safe(client, tg_receiver)
@@ -139,61 +143,54 @@ async def send_message(db: AsyncSession, user_id: int, profile_id: int, text: st
         logger.error(f"Error sending message from profile {profile_id}: {e}")
         return {"status": "error", "message": str(e)}
 
-# async def get_dialogs(user_id: int, profile_id: int, db: AsyncSession, limit: int = 50):
-#     """Получить список диалогов"""
-#     try:
-#         profile = db.query(TelegramProfile).filter(
-#             TelegramProfile.id == profile_id,
-#             TelegramProfile.user_id == user_id
-#         ).first()
-#
-#         if not profile:
-#             return {"status": "error", "message": "Профиль не найден"}
-#
-#         if not profile.is_authorized:
-#             return {"status": "error", "message": "Профиль не авторизован"}
-#
-#         session = db.query(TelegramSession).filter(
-#             TelegramSession.profile_id == profile_id,
-#             TelegramSession.is_active == True
-#         ).first()
-#
-#         if not session:
-#             return {"status": "error", "message": "Сессия не найдена"}
-#
-#         session_file = session.session_file
-#         client = TelegramClient(session_file, settings.API_ID, settings.API_HASH)
-#
-#         try:
-#             await client.connect()
-#
-#             if not await client.is_user_authorized():
-#                 session.is_active = False
-#                 profile.is_authorized = False
-#                 db.commit()
-#                 return {"status": "error", "message": "Сессия истекла"}
-#
-#             dialogs = await client.get_dialogs(limit=limit)
-#
-#             dialogs_list = [
-#                 {
-#                     "id": dialog.entity.id,
-#                     "name": dialog.name,
-#                     "unread_count": dialog.unread_count,
-#                     "is_group": dialog.is_group,
-#                     "is_channel": dialog.is_channel
-#                 }
-#                 for dialog in dialogs
-#             ]
-#
-#             return {
-#                 "status": "success",
-#                 "dialogs": dialogs_list
-#             }
-#
-#         finally:
-#             await client.disconnect()
-#
-#     except Exception as e:
-#         logger.error(f"Error getting dialogs for profile {profile_id}: {e}")
-#         return {"status": "error", "message": str(e)}
+async def get_dialogs(user_id: int, profile_id: int, db: AsyncSession, limit: int = 50):
+    """Получить список диалогов"""
+    try:
+        profile = await get_tg_profile(db, user_id, profile_id)
+
+        if not profile:
+            return {"status": "error", "message": "Профиль не найден"}
+
+        if not profile.is_authorized:
+            return {"status": "error", "message": "Профиль не авторизован"}
+
+        session = await get_tg_session(db, profile_id)
+
+        if not session:
+            return {"status": "error", "message": "Сессия не найдена"}
+
+        client, session_record = await get_client(profile_id, db)
+
+        try:
+            await client.connect()
+
+            if not await client.is_user_authorized():
+                await update_session(db, session_record, is_active=False)
+                await update_profile(db, profile, is_authorized=False)
+                await db.commit()
+                return {"status": "error", "message": "Сессия истекла"}
+
+            dialogs = await client.get_dialogs(limit=limit)
+
+            dialogs_list = [
+                {
+                    "id": dialog.entity.id,
+                    "name": dialog.name,
+                    "unread_count": dialog.unread_count,
+                    "is_group": dialog.is_group,
+                    "is_channel": dialog.is_channel
+                }
+                for dialog in dialogs
+            ]
+
+            return {
+                "status": "success",
+                "dialogs": dialogs_list
+            }
+
+        finally:
+            await client.disconnect()
+
+    except Exception as e:
+        logger.error(f"Error getting dialogs for profile {profile_id}: {e}")
+        return {"status": "error", "message": str(e)}

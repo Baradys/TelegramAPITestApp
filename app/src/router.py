@@ -10,9 +10,9 @@ from app.db.telegram.models import User
 from app.db.telegram.requests import get_app_user, create_user
 from app.middleware.jwt import create_access_token, get_current_user
 from app.models.base_model import PhoneRequest, TokenResponse, CodeRequest, RegisterRequest, LoginRequest, \
-    MessagesRequest, SendMessageRequest, DialogsRequest
-from app.services.auth import start_auth, verify_code
-from app.services.messages import get_unread_messages, send_message
+    MessagesRequest, SendMessageRequest, DialogsRequest, PasswordRequest, UserResponse
+from app.services.auth import start_auth, verify_code, get_user_profiles, verify_password
+from app.services.messages import get_unread_messages, send_message, get_dialogs
 
 router = APIRouter()
 
@@ -77,7 +77,7 @@ async def start_auth_profile(
 ):
     """Начать авторизацию нового профиля"""
 
-    result = await start_auth(user.id, request.phone, db)
+    result = await start_auth(db, user.id, request.phone)
 
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
@@ -85,43 +85,55 @@ async def start_auth_profile(
     return result
 
 
-@router.post("/profiles/code", response_model=TokenResponse)
+@router.get("/profiles")
+async def list_profiles(
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+):
+    """Получить все профили пользователя"""
+    result = await get_user_profiles(db, user.id)
+
+    if result["status"] == "error":
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    return result
+
+
+@router.post("/profiles/code")
 async def auth_verify_code(
         request: CodeRequest,
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db)
 ):
     """Подтвердить код"""
-    result = await verify_code(user.id, request.profile_id, request.code, db)
+    result = await verify_code(db, user.id, request.profile_id, request.code)
 
     if result["status"] != "success":
         raise HTTPException(status_code=400, detail=result["message"])
 
+    return result
+
+
+
+@router.post("/auth/password", response_model=TokenResponse)
+async def auth_verify_password(
+        request: PasswordRequest,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+):
+    """Подтвердить пароль 2FA"""
+    result = await verify_password(db, user.id, request.profile_id, request.password)
+
+    if result["status"] != "success":
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    user_id = result["user_id"]
+    token = create_access_token(user_id)
+
     return {
-        "access_token": create_access_token(user.id),
+        "access_token": token,
         "token_type": "bearer"
     }
-
-
-#
-# @router.post("/auth/password", response_model=TokenResponse)
-# async def auth_verify_password(
-#         request: PasswordRequest,
-#         db: Session = Depends(get_db)
-# ):
-#     """Подтвердить пароль 2FA"""
-#     result = await verify_password(request.phone, request.password, db)
-#
-#     if result["status"] != "success":
-#         raise HTTPException(status_code=400, detail=result["message"])
-#
-#     user_id = result["user_id"]
-#     token = create_access_token(user_id)
-#
-#     return {
-#         "access_token": token,
-#         "token_type": "bearer"
-#     }
 
 
 @router.post("/messages/unread")
@@ -130,8 +142,7 @@ async def get_messages_endpoint(
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db)
 ):
-
-    result = await get_unread_messages(user.id, request.profile_id, db)
+    result = await get_unread_messages(db, user.id, request.profile_id, request.limit)
 
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
@@ -154,17 +165,31 @@ async def send_message_endpoint(
     return result
 
 
-# @router.post("/messages/dialogs")
-# async def get_dialogs_endpoint(
-#         request: DialogsRequest,
-#         user: User = Depends(get_current_user),
-#         db: AsyncSession = Depends(get_db)
-# ):
-#     """Получить список диалогов профиля"""
-#
-#     result = await get_dialogs(user.id, request.profile_id, db, request.limit)
-#
-#     if result["status"] == "error":
-#         raise HTTPException(status_code=400, detail=result["message"])
-#
-#     return result
+@router.post("/messages/dialogs")
+async def get_dialogs_endpoint(
+        request: DialogsRequest,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+):
+    """Получить список диалогов профиля"""
+    result = await get_dialogs(user.id, request.profile_id, db, request.limit)
+
+    if result["status"] == "error":
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.get("/health")
+async def health():
+    """Проверка здоровья"""
+    return {"status": "ok"}
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(user: User = Depends(get_current_user)):
+    """Получить информацию о текущем пользователе"""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "created_at": user.created_at.isoformat(),
+    }

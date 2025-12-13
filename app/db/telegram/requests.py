@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -112,6 +113,12 @@ async def get_tg_profile(session: AsyncSession, user_id, profile_id) -> Telegram
         result = await session.execute(stmt)
         return result.unique().scalar()
 
+async def get_users_profiles(session: AsyncSession, user_id) -> Sequence[TelegramProfile]:
+    stmt = select(TelegramProfile).where(TelegramProfile.user_id == user_id)
+    async with session as session:
+        result = await session.execute(stmt)
+        return result.unique().scalars().all()
+
 
 async def create_tg_session(
         session: AsyncSession,
@@ -150,3 +157,5 @@ async def update_session(
         await session.commit()
         await session.refresh(tg_session)
         return tg_session
+
+

@@ -14,7 +14,7 @@ async def init_models():
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     # Startup
     await init_models()  # создаём таблицы асинхронно
     await init_redis()
