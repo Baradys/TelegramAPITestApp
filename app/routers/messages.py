@@ -1,5 +1,3 @@
-import logging
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,9 +6,6 @@ from app.db.user.models import User
 from app.middleware.jwt import get_current_user
 from app.models.request_model import SendMessageRequest, DialogsRequest, MessagesRequest
 from app.services.messages import get_unread_messages, send_message, get_dialogs
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 class MessagesRouter:

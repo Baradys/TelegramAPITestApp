@@ -3,13 +3,14 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import JSONResponse
 
 from app.db.database import get_db
 from app.db.user.models import User
 from app.db.user.requests import get_app_user, create_user
 from app.middleware.jwt import create_access_token, get_current_user
 from app.models.request_model import RegisterRequest, LoginRequest, PasswordRequest
-from app.services.auth import  verify_password
+from app.services.auth import verify_password
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,10 +42,19 @@ class AuthRouter:
 
             logger.info(f"User {payload.email} registered")
 
-            return {
-                "access_token": token,
-                "token_type": "bearer"
-            }
+            response = JSONResponse(
+                content={"detail": "registered"},  # можешь вернуть что угодно
+                status_code=201,
+            )
+            response.set_cookie(
+                key="access_token",
+                value=token,
+                httponly=True,
+                secure=False,
+                samesite="lax",
+                max_age=60 * 60 * 24
+            )
+            return response
 
         except Exception as e:
             logger.error(f"Registration error: {e}")
@@ -64,10 +74,19 @@ class AuthRouter:
 
             logger.info(f"User {payload.email} logged in")
 
-            return {
-                "access_token": token,
-                "token_type": "bearer"
-            }
+            response = JSONResponse(
+                content={"detail": "logged in"},
+                status_code=201,
+            )
+            response.set_cookie(
+                key="access_token",
+                value=token,
+                httponly=True,
+                secure=False,
+                samesite="lax",
+                max_age=60 * 60 * 24
+            )
+            return response
 
         except Exception as e:
             logger.error(f"Login error: {e}")
@@ -85,10 +104,4 @@ class AuthRouter:
         if result["status"] != "success":
             raise HTTPException(status_code=400, detail=result["message"])
 
-        user_id = result["user_id"]
-        token = create_access_token(user_id)
-
-        return {
-            "access_token": token,
-            "token_type": "bearer"
-        }
+        return result

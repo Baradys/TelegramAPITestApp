@@ -10,6 +10,17 @@ from app.services.auth import get_client
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+async def _get_tg_entity(client, identifier):
+    if identifier.isdigit():
+        identifier = int(identifier)
+    try:
+        return await client.get_entity(identifier)
+    except ValueError:
+        async for dialog in client.iter_dialogs():
+            if dialog.id == identifier:
+                return dialog.entity
+        raise ValueError(f"Entity {identifier} not found")
+
 
 async def _prepare_authorized_client(
         db,
@@ -114,7 +125,7 @@ async def get_unread_messages(
 
             session_record.session_string = client.session.save()
             await db.commit()
-
+            logger.info(f"User {user_id} got unread messages for profile {profile_username}")
             return {
                 "status": "success",
                 "count": len(unread_messages),
@@ -129,18 +140,6 @@ async def get_unread_messages(
         return {"status": "error", "message": str(e)}
 
 
-async def get_entity_safe(client, identifier):
-    if identifier.isdigit():
-        identifier = int(identifier)
-    try:
-        return await client.get_entity(identifier)
-    except ValueError:
-        async for dialog in client.iter_dialogs():
-            if dialog.id == identifier:
-                return dialog.entity
-        raise ValueError(f"Entity {identifier} not found")
-
-
 async def send_message(db: AsyncSession, user_id: int, profile_username: str, text: str, tg_receiver: str):
     """Отправить сообщение от профиля"""
     try:
@@ -153,7 +152,7 @@ async def send_message(db: AsyncSession, user_id: int, profile_username: str, te
             return error
 
         try:
-            entity = await get_entity_safe(client, tg_receiver)
+            entity = await _get_tg_entity(client, tg_receiver)
             await client.send_message(entity, text)
             logger.info(f"Message sent from profile {profile_username} to chat {tg_receiver}")
             return {"status": "success", "message": "Сообщение отправлено"}
@@ -189,6 +188,7 @@ async def get_dialogs(user_id: int, profile_username: str, db: AsyncSession, lim
                 }
                 for dialog in dialogs
             ]
+            logger.info(f"User {user_id} got dialogs for profile {profile_username}")
             return {
                 "status": "success",
                 "dialogs": dialogs_list

@@ -44,7 +44,7 @@ async def _prepare_client_for_profile(
             "message": "Сначала запроси код через /auth/start",
         }
 
-    client, session_record = await get_client(db, profile_username)
+    client, session_record = await _get_client(db, profile_username)
 
     if not client.is_connected():
         await client.connect()
@@ -52,7 +52,7 @@ async def _prepare_client_for_profile(
     return profile, client, session_record
 
 
-async def get_client(db: AsyncSession, profile_username: str):
+async def _get_client(db: AsyncSession, profile_username: str):
     """Получить клиент Telethon из StringSession"""
 
     # Получаем сессию из БД
@@ -87,6 +87,7 @@ async def start_auth(db: AsyncSession, user_id: int, phone: str):
         profile = await get_profile_by_user_and_phone(db, user_id, phone)
 
         if profile and profile.is_authorized:
+            logger.info(f"User {user_id} already authorized profile {profile.username}")
             return {
                 "status": "already_authorized",
                 "message": "Этот профиль уже авторизован",
@@ -101,7 +102,7 @@ async def start_auth(db: AsyncSession, user_id: int, phone: str):
                 is_authorized=False,
             )
 
-        client, session_record = await get_client(db, profile.username)
+        client, session_record = await _get_client(db, profile.username)
 
         if not client.is_connected():
             await client.connect()
@@ -113,7 +114,7 @@ async def start_auth(db: AsyncSession, user_id: int, phone: str):
                 profile,
                 is_authorized=True,
             )
-
+            logger.info(f"User {user_id} already authorized profile {profile.username}")
             return {
                 "status": "already_authorized",
                 "message": "Профиль уже авторизован в Telegram",
@@ -136,7 +137,6 @@ async def start_auth(db: AsyncSession, user_id: int, phone: str):
             phone_code_hash=result.phone_code_hash,
         )
         logger.info(f"Auth started for user {user_id}, phone {phone}")
-
         return {
             "status": "code_sent",
             "message": "Код отправлен в Telegram",
@@ -182,7 +182,6 @@ async def verify_code(db: AsyncSession, user_id: int, profile_username: str, cod
                              last_name=me.last_name, username=me.username)
 
         logger.info(f"User {user_id} authorized profile {profile_username}")
-
         return {
             "status": "success",
             "message": "Авторизация успешна",
@@ -241,6 +240,7 @@ async def get_user_profiles(db: AsyncSession, user_id: int):
     """Получить все профили пользователя"""
     try:
         profiles = await  get_users_profiles(db, user_id)
+        logger.info(f"User {user_id} got profiles: {profiles}")
         return {
             "status": "success",
             "profiles": [
