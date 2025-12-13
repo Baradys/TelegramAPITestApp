@@ -1,0 +1,37 @@
+services:
+
+  redis:
+    container_name: redis
+    restart: unless-stopped
+    image: redis:alpine
+
+  api:
+    container_name: tg_messages.api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  db:
+    container_name: tg_messages.db
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    volumes:
+      - tg_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    restart: unless-stopped
+
+
+volumes:
+  tg_data:
