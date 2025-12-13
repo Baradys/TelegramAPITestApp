@@ -1,8 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
-
-Base = declarative_base()
+from app.db.base import Base
 
 
 class User(Base):
@@ -12,12 +10,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True)
     password_hash = Column(String(255))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     last_login = Column(DateTime, nullable=True)
 
-    # Для ограничения API
-    api_calls_today = Column(Integer, default=0)
-    api_calls_reset_at = Column(DateTime, default=datetime.utcnow)
 
 
 class TelegramProfile(Base):
@@ -30,7 +25,7 @@ class TelegramProfile(Base):
     phone_code_hash = Column(String(255), nullable=True)
     is_authorized = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     last_login = Column(DateTime, nullable=True)
 
     # Метаданные профиля
@@ -48,8 +43,8 @@ class TelegramSession(Base):
     profile_id = Column(Integer, ForeignKey("telegram_profiles.id"), index=True)
     session_file = Column(String(255), unique=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_used = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    last_used = Column(DateTime, default=datetime.now)
 
 
 class MessageCache(Base):
@@ -59,5 +54,5 @@ class MessageCache(Base):
     id = Column(Integer, primary_key=True, index=True)
     profile_id = Column(Integer, ForeignKey("telegram_profiles.id"), index=True)
     message_data = Column(Text)  # JSON
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     expires_at = Column(DateTime)

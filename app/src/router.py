@@ -1,20 +1,18 @@
-import random
 import hashlib
 import logging
-from datetime import datetime
-
-
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+
 from app.db.database import get_db
 from app.db.redis import get_redis_client
 from app.db.telegram.models import User
-from app.middleware.jwt import create_access_token
-from app.models.base_model import PhoneRequest, TokenResponse, CodeRequest, RegisterRequest, LoginRequest
+from app.db.telegram.requests import get_app_user, create_user
+from app.middleware.jwt import create_access_token, get_current_user
+from app.models.base_model import PhoneRequest, TokenResponse, CodeRequest, RegisterRequest, LoginRequest, \
+    MessagesRequest
 from app.services.auth import start_auth, verify_code
+from app.services.messages import get_unread_messages
 
 router = APIRouter()
 
@@ -26,31 +24,40 @@ async def get_redis():
     """Dependency для получения Redis клиента"""
     return get_redis_client()
 
-@router.post("/auth/start")
-async def auth_start(request: PhoneRequest, db: Session = Depends(get_db)):
-    result = await start_auth(123, request.phone, db)
+
+@router.post("/profiles/start")
+async def start_auth_profile(
+        request: PhoneRequest,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+):
+    """Начать авторизацию нового профиля"""
+
+    result = await start_auth(user.id, request.phone, db)
+
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
+
     return result
 
 
-@router.post("/auth/code", response_model=TokenResponse)
+@router.post("/profiles/code", response_model=TokenResponse)
 async def auth_verify_code(
         request: CodeRequest,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
 ):
     """Подтвердить код"""
-    result = await verify_code(request.phone, request.code)
+    result = await verify_code(user.id, request.profile_id, request.code, db)
 
     if result["status"] != "success":
         raise HTTPException(status_code=400, detail=result["message"])
 
-    user_id = result["user_id"]
-    # token = create_access_token(user_id)
-
     return {
-        # "access_token": token,
+        "access_token": create_access_token(user.id),
         "token_type": "bearer"
     }
+
 
 #
 # @router.post("/auth/password", response_model=TokenResponse)
@@ -74,26 +81,13 @@ async def auth_verify_code(
 
 
 @router.post("/auth/register", response_model=TokenResponse)
-async def register(request: RegisterRequest, db: Session = Depends(get_db)):
-    """Регистрация нового пользователя"""
+async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db)):
     try:
-        # Проверить, существует ли пользователь
-
-        stmt = select(User).where(User.email == request.email)
-        result = await db.execute(stmt)
-        existing_user = result.scalar_one_or_none()
+        existing_user = await get_app_user(db, request.email)
         if existing_user:
             raise HTTPException(status_code=400, detail="Email already registered")
-
-        # Создать пользователя
         password_hash = hashlib.sha256(request.password.encode()).hexdigest()
-        user = User(
-            email=request.email,
-            password_hash=password_hash
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        user = await create_user(db, request.email, password_hash)
 
         token = create_access_token(user.id)
 
@@ -110,21 +104,12 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/login", response_model=TokenResponse)
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
-    """Вход пользователя"""
+async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     try:
-        user = db.select(User).filter(User.email == request.email).first()
-
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-
+        user = await get_app_user(db, request.email)
         password_hash = hashlib.sha256(request.password.encode()).hexdigest()
-        if user.password_hash != password_hash:
+        if not user or user.password_hash != password_hash:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-
-        user.last_login = datetime.now()
-        db.commit()
-
         token = create_access_token(user.id)
 
         logger.info(f"User {request.email} logged in")
@@ -138,4 +123,17 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         logger.error(f"Login error: {e}")
         raise HTTPException(status_code=401, detail=str(e))
 
-# ============ УПРАВЛЕНИЕ ПРОФИЛЯМИ ============
+
+@router.post("/messages/unread")
+async def get_messages_endpoint(
+        request: MessagesRequest,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+):
+
+    result = await get_unread_messages(user.id, request.profile_id, db, request.limit)
+
+    if result["status"] == "error":
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    return result

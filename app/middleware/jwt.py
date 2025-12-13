@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPBasicCredentials
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import logging
@@ -10,6 +11,7 @@ import logging
 from app.config.config import get_settings
 from app.db.database import get_db
 from app.db.telegram.models import User
+from app.db.telegram.requests import get_user_by_id
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ def create_access_token(user_id: int):
 
 async def get_current_user(
         credentials: HTTPBasicCredentials = Depends(security),
-        db: Session = Depends(get_db)
+        db: AsyncSession = Depends(get_db)
 ) -> User:
     """Получить текущего пользователя из токена"""
     try:
@@ -53,7 +55,7 @@ async def get_current_user(
             detail="Invalid token"
         )
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = await get_user_by_id(db, user_id)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
