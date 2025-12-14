@@ -144,6 +144,36 @@ def mock_profile(request):
 
 
 @pytest.fixture
+def mock_client_full():
+    """Полностью мокированный Telethon клиент"""
+    client = AsyncMock()
+    client.is_connected.return_value = True
+    client.connect = AsyncMock()
+    client.sign_in = AsyncMock()
+
+    # Мокируем get_me()
+    me = MagicMock()
+    me.first_name = "John"
+    me.last_name = "Doe"
+    me.username = "johndoe"
+    client.get_me = AsyncMock(return_value=me)
+
+    # Мокируем session
+    client.session = MagicMock()
+    client.session.save.return_value = "session_string_123"
+
+    return client
+
+
+@pytest.fixture
+def mock_session_record():
+    """Мокированная запись сессии"""
+    record = AsyncMock()
+    record.session_string = "old_session"
+    return record
+
+
+@pytest.fixture
 def mock_client(request):
     """AsyncMock client для всех тестов"""
     client = AsyncMock()

@@ -86,26 +86,26 @@ async def test_start_auth_success(mock_db, mock_user, mock_profile, mock_client,
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_verify_code_profile_not_found(mock_db, fake_logger):
+async def test_verify_code_profile_not_found(mock_db):
     """Профиль не найден"""
-    with patch('app.services.auth.get_tg_profile', new_callable=AsyncMock) as mock_get_profile:
+
+    with patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile:
         mock_get_profile.return_value = None
 
-        result = await verify_code(mock_db, user_id=1, code="12345", phone="+1234567890")
+        result = await verify_code(mock_db, user_id=1, phone='+1234567890', code="12345")
 
         assert result["status"] == "error"
         assert "Профиль не найден" in result["message"]
 
-
 @pytest.mark.asyncio
-async def test_verify_code_no_phone_code_hash(mock_db, mock_profile, fake_logger):
+async def test_verify_code_no_phone_code_hash(mock_db, mock_profile):
     """Нет phone_code_hash"""
     mock_profile.phone_code_hash = None
 
-    mock_get_profile = AsyncMock(return_value=mock_profile)
+    with patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile:
+        mock_get_profile.return_value = mock_profile
 
-    with patch('app.services.auth.get_tg_profile', mock_get_profile):
-        result = await verify_code(mock_db, user_id=1, code="12345", phone="+1234567890")
+        result = await verify_code(mock_db, user_id=1, phone='+1234567890', code="12345")
 
         assert result["status"] == "error"
         assert "запроси код" in result["message"]
@@ -117,7 +117,7 @@ async def test_verify_code_success(mock_db, mock_profile, mock_client, fake_logg
     mock_profile.phone_code_hash = "hash-123"
     session_record = AsyncMock()
 
-    with patch('app.services.auth.get_tg_profile', new_callable=AsyncMock) as mock_get_profile, \
+    with patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile, \
             patch('app.services.auth._get_client', new_callable=AsyncMock) as mock_get_client, \
             patch('app.services.auth.update_session', new_callable=AsyncMock) as mock_update_session, \
             patch('app.services.auth.update_profile', new_callable=AsyncMock) as mock_update_profile:
@@ -125,10 +125,12 @@ async def test_verify_code_success(mock_db, mock_profile, mock_client, fake_logg
         mock_get_client.return_value = (mock_client, session_record)
         mock_update_profile.return_value = mock_profile
 
-        result = await verify_code(mock_db, user_id=1, code="12345", phone='1234567890')
+        result = await verify_code(mock_db, user_id=1, code="12345", phone='+1234567890')
 
         assert result["status"] == "success"
-        mock_client.sign_in.assert_called_once()
+        assert result["message"] == "Авторизация успешна"
+        mock_update_session.assert_called_once()
+        mock_update_profile.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -153,23 +155,24 @@ async def test_verify_code_invalid_code(mock_db, mock_profile, mock_client, fake
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_verify_password_success(mock_db, mock_profile, mock_client, fake_logger):
+async def test_verify_password_success(mock_db, mock_profile, mock_client_full, mock_session_record):
     """Успешная проверка пароля"""
     mock_profile.phone_code_hash = "hash-123"
-    session_record = AsyncMock()
 
-    with patch('app.services.auth.get_tg_profile', new_callable=AsyncMock) as mock_get_profile, \
+    with patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile, \
             patch('app.services.auth._get_client', new_callable=AsyncMock) as mock_get_client, \
             patch('app.services.auth.update_session', new_callable=AsyncMock) as mock_update_session, \
             patch('app.services.auth.update_profile', new_callable=AsyncMock) as mock_update_profile:
         mock_get_profile.return_value = mock_profile
-        mock_get_client.return_value = (mock_client, session_record)
+        mock_get_client.return_value = (mock_client_full, mock_session_record)
         mock_update_profile.return_value = mock_profile
 
-        result = await verify_password(mock_db, user_id=1, profile_username="test", password="pass123")
+        result = await verify_password(mock_db, user_id=1, phone='+1234567890', password="pass123")
 
         assert result["status"] == "success"
-        mock_client.sign_in.assert_called_once_with(password="pass123")
+        assert result["message"] == "Авторизация успешна"
+        mock_client_full.sign_in.assert_called_once_with(password="pass123")
+        mock_update_session.assert_called_once()
 
 
 # ============================================================================
