@@ -26,16 +26,16 @@ class PasswordRequest(BaseModel):
 
 
 class MessagesRequest(BaseModel):
-    profile_username: str
+    phone: str
     limit: int = 50
 
 
 class SendMessageRequest(BaseModel):
-    profile_username: str
+    phone: str
     text: str
     tg_receiver: str
 
 
 class DialogsRequest(BaseModel):
-    profile_username: str
+    phone: str
     limit: int = 50

@@ -18,7 +18,7 @@ async def test_get_unread_messages_profile_not_found(mock_db, fake_logger):
     with patch('app.services.messages.get_tg_profile', new_callable=AsyncMock) as mock_get_profile:
         mock_get_profile.return_value = None
 
-        result = await get_unread_messages(mock_db, user_id=1, profile_username="test")
+        result = await get_unread_messages(mock_db, user_id=1, phone="+1234567890")
 
         assert result["status"] == "error"
         assert "Профиль не найден" in result["message"]
@@ -32,7 +32,7 @@ async def test_get_unread_messages_not_authorized(mock_db, mock_profile, fake_lo
     with patch('app.services.messages.get_tg_profile', new_callable=AsyncMock) as mock_get_profile:
         mock_get_profile.return_value = mock_profile
 
-        result = await get_unread_messages(mock_db, user_id=1, profile_username="test")
+        result = await get_unread_messages(mock_db, user_id=1, phone="+1234567890")
 
         assert result["status"] == "error"
         assert "не авторизован" in result["message"]
@@ -46,7 +46,7 @@ async def test_get_unread_messages_session_not_found(mock_db, mock_profile, fake
         mock_get_profile.return_value = mock_profile
         mock_get_session.return_value = None
 
-        result = await get_unread_messages(mock_db, user_id=1, profile_username="test")
+        result = await get_unread_messages(mock_db, user_id=1, phone="+1234567890")
 
         assert result["status"] == "error"
         assert "Сессия не найдена" in result["message"]
@@ -66,7 +66,7 @@ async def test_get_unread_messages_client_not_authorized(mock_db, mock_profile, 
         mock_get_session.return_value = mock_session
         mock_get_client.return_value = (mock_client, mock_session)
 
-        result = await get_unread_messages(mock_db, user_id=1, profile_username="test")
+        result = await get_unread_messages(mock_db, user_id=1, phone="+1234567890")
 
         assert result["status"] == "error"
         assert "истекла" in result["message"]
@@ -88,7 +88,7 @@ async def test_get_unread_messages_connection_error(mock_db, mock_profile, mock_
         mock_get_session.return_value = mock_session
         mock_get_client.return_value = (mock_client, mock_session)
 
-        result = await get_unread_messages(mock_db, user_id=1, profile_username="test")
+        result = await get_unread_messages(mock_db, user_id=1, phone="+1234567890")
 
         assert result["status"] == "error"
         assert "Ошибка подключения" in result["message"]
@@ -108,7 +108,7 @@ async def test_get_unread_messages_success(mock_db, mock_profile, mock_session, 
         mock_get_session.return_value = mock_session
         mock_get_client.return_value = (mock_client, mock_session)
 
-        result = await get_unread_messages(mock_db, user_id=1, profile_username="test")
+        result = await get_unread_messages(mock_db, user_id=1, phone="+1234567890")
 
         assert result["status"] == "success"
         assert result["count"] == 1
@@ -131,7 +131,7 @@ async def test_get_unread_messages_no_unread(mock_db, mock_profile, mock_session
         mock_get_session.return_value = mock_session
         mock_get_client.return_value = (mock_client, mock_session)
 
-        result = await get_unread_messages(mock_db, user_id=1, profile_username="test")
+        result = await get_unread_messages(mock_db, user_id=1, phone="+1234567890")
 
         assert result["status"] == "success"
         assert result["count"] == 0
@@ -148,7 +148,7 @@ async def test_send_message_profile_not_found(mock_db, fake_logger):
     with patch('app.services.messages.get_tg_profile', new_callable=AsyncMock) as mock_get_profile:
         mock_get_profile.return_value = None
 
-        result = await send_message(mock_db, user_id=1, profile_username="test", text="Hi", tg_receiver="123")
+        result = await send_message(mock_db, user_id=1, phone="+1234567890", text="Hi", tg_receiver="123")
 
         assert result["status"] == "error"
         assert "Профиль не найден" in result["message"]
@@ -167,7 +167,7 @@ async def test_send_message_success(mock_db, mock_profile, mock_session, mock_cl
         mock_get_session.return_value = mock_session
         mock_get_client.return_value = (mock_client, mock_session)
 
-        result = await send_message(mock_db, user_id=1, profile_username="test", text="Hi", tg_receiver="123")
+        result = await send_message(mock_db, user_id=1, phone="+1234567890", text="Hi", tg_receiver="123")
 
         assert result["status"] == "success"
         mock_client.get_entity.assert_called_once_with(123)  # Число, а не строка
@@ -187,7 +187,7 @@ async def test_send_message_entity_not_found(mock_db, mock_profile, mock_session
         mock_get_session.return_value = mock_session
         mock_get_client.return_value = (mock_client, mock_session)
 
-        result = await send_message(mock_db, user_id=1, profile_username="test", text="Hi", tg_receiver="invalid")
+        result = await send_message(mock_db, user_id=1, phone="+1234567890", text="Hi", tg_receiver="invalid")
 
         assert result["status"] == "error"
 
@@ -202,7 +202,7 @@ async def test_get_dialogs_profile_not_found(mock_db, fake_logger):
     with patch('app.services.messages.get_tg_profile', new_callable=AsyncMock) as mock_get_profile:
         mock_get_profile.return_value = None
 
-        result = await get_dialogs(user_id=1, profile_username="test", db=mock_db)
+        result = await get_dialogs(user_id=1, phone="+1234567890", db=mock_db)
 
         assert result["status"] == "error"
         assert "Профиль не найден" in result["message"]
@@ -220,7 +220,7 @@ async def test_get_dialogs_success(mock_db, mock_profile, mock_session, mock_cli
         mock_get_session.return_value = mock_session
         mock_get_client.return_value = (mock_client, mock_session)
 
-        result = await get_dialogs(user_id=1, profile_username="test", db=mock_db)
+        result = await get_dialogs(user_id=1, phone="+1234567890", db=mock_db)
 
         assert result["status"] == "success"
         assert len(result["dialogs"]) == 1
@@ -241,7 +241,7 @@ async def test_get_dialogs_empty(mock_db, mock_profile, mock_session, mock_clien
         mock_get_session.return_value = mock_session
         mock_get_client.return_value = (mock_client, mock_session)
 
-        result = await get_dialogs(user_id=1, profile_username="test", db=mock_db)
+        result = await get_dialogs(user_id=1, phone="+1234567890", db=mock_db)
 
         assert result["status"] == "success"
         assert len(result["dialogs"]) == 0

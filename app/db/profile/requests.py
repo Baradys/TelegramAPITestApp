@@ -14,15 +14,8 @@ async def get_profile_by_phone(session: AsyncSession, phone: str) -> TelegramPro
         return result.unique().scalar()
 
 
-async def get_profile_by_user_and_phone(
-        session: AsyncSession,
-        user_id: int,
-        phone: str,
-) -> TelegramProfile | None:
-    stmt = select(TelegramProfile).where(
-        TelegramProfile.user_id == user_id,
-        TelegramProfile.phone == phone,
-    )
+async def get_tg_profile(session: AsyncSession, user_id, phone) -> TelegramProfile:
+    stmt = select(TelegramProfile).where(TelegramProfile.phone == phone, TelegramProfile.user_id == user_id)
     async with session as session:
         result = await session.execute(stmt)
         return result.unique().scalar()
@@ -75,12 +68,6 @@ async def update_profile(
         await session.refresh(profile)
         return profile
 
-
-async def get_tg_profile(session: AsyncSession, user_id, profile_username) -> TelegramProfile:
-    stmt = select(TelegramProfile).where(TelegramProfile.username == profile_username, TelegramProfile.user_id == user_id)
-    async with session as session:
-        result = await session.execute(stmt)
-        return result.unique().scalar()
 
 async def get_users_profiles(session: AsyncSession, user_id) -> Sequence[TelegramProfile]:
     stmt = select(TelegramProfile).where(TelegramProfile.user_id == user_id)

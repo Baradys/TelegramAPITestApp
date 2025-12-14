@@ -48,7 +48,7 @@ async def test_start_auth_already_authorized(mock_db, mock_user, mock_profile, f
 
     with patch('app.services.auth.get_user_by_id', new_callable=AsyncMock) as mock_get_user, \
             patch('app.services.auth.get_profile_by_phone', new_callable=AsyncMock) as mock_get_profile_by_phone, \
-            patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile:
+            patch('app.services.auth.get_tg_profile', new_callable=AsyncMock) as mock_get_profile:
         mock_get_user.return_value = mock_user
         mock_get_profile_by_phone.return_value = None
         mock_get_profile.return_value = mock_profile
@@ -63,7 +63,7 @@ async def test_start_auth_success(mock_db, mock_user, mock_profile, mock_client,
     """Успешное начало авторизации"""
     with patch('app.services.auth.get_user_by_id', new_callable=AsyncMock) as mock_get_user, \
             patch('app.services.auth.get_profile_by_phone', new_callable=AsyncMock) as mock_get_profile_by_phone, \
-            patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile, \
+            patch('app.services.auth.get_tg_profile', new_callable=AsyncMock) as mock_get_profile, \
             patch('app.services.auth.create_profile', new_callable=AsyncMock) as mock_create_profile, \
             patch('app.services.auth._get_client', new_callable=AsyncMock) as mock_get_client, \
             patch('app.services.auth.update_profile', new_callable=AsyncMock) as mock_update_profile:
@@ -89,7 +89,7 @@ async def test_start_auth_success(mock_db, mock_user, mock_profile, mock_client,
 async def test_verify_code_profile_not_found(mock_db):
     """Профиль не найден"""
 
-    with patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile:
+    with patch('app.services.auth.get_tg_profile', new_callable=AsyncMock) as mock_get_profile:
         mock_get_profile.return_value = None
 
         result = await verify_code(mock_db, user_id=1, phone='+1234567890', code="12345")
@@ -102,7 +102,7 @@ async def test_verify_code_no_phone_code_hash(mock_db, mock_profile):
     """Нет phone_code_hash"""
     mock_profile.phone_code_hash = None
 
-    with patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile:
+    with patch('app.services.auth.get_tg_profile', new_callable=AsyncMock) as mock_get_profile:
         mock_get_profile.return_value = mock_profile
 
         result = await verify_code(mock_db, user_id=1, phone='+1234567890', code="12345")
@@ -117,7 +117,7 @@ async def test_verify_code_success(mock_db, mock_profile, mock_client, fake_logg
     mock_profile.phone_code_hash = "hash-123"
     session_record = AsyncMock()
 
-    with patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile, \
+    with patch('app.services.auth.get_tg_profile', new_callable=AsyncMock) as mock_get_profile, \
             patch('app.services.auth._get_client', new_callable=AsyncMock) as mock_get_client, \
             patch('app.services.auth.update_session', new_callable=AsyncMock) as mock_update_session, \
             patch('app.services.auth.update_profile', new_callable=AsyncMock) as mock_update_profile:
@@ -159,7 +159,7 @@ async def test_verify_password_success(mock_db, mock_profile, mock_client_full, 
     """Успешная проверка пароля"""
     mock_profile.phone_code_hash = "hash-123"
 
-    with patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile, \
+    with patch('app.services.auth.get_tg_profile', new_callable=AsyncMock) as mock_get_profile, \
             patch('app.services.auth._get_client', new_callable=AsyncMock) as mock_get_client, \
             patch('app.services.auth.update_session', new_callable=AsyncMock) as mock_update_session, \
             patch('app.services.auth.update_profile', new_callable=AsyncMock) as mock_update_profile:

@@ -5,9 +5,9 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 
 from app.config.config import get_settings
-from app.db.profile.requests import get_profile_by_phone, get_profile_by_user_and_phone, create_profile, update_profile, \
-    get_tg_profile, get_users_profiles
-from app.db.session.requests import get_tg_session, update_session, create_tg_session, get_tg_session_by_phone
+from app.db.profile.requests import get_profile_by_phone, create_profile, update_profile, \
+    get_users_profiles, get_tg_profile
+from app.db.session.requests import get_tg_session, update_session, create_tg_session
 from app.db.user.requests import get_user_by_id
 
 settings = get_settings()
@@ -18,8 +18,7 @@ logger = logging.getLogger(__name__)
 async def _prepare_client_for_profile(
         db,
         user_id: int,
-        profile_username: str = None,
-        phone: str = None,
+        phone: str,
         require_phone_code_hash: bool = True,
 ):
     """
@@ -29,10 +28,7 @@ async def _prepare_client_for_profile(
       - True  — проверять наличие profile.phone_code_hash
       - False — не проверять (если где‑то это не нужно)
     """
-    if not profile_username and phone:
-        profile = await get_profile_by_user_and_phone(db, user_id, phone)
-    else:
-        profile = await get_tg_profile(db, user_id, profile_username)
+    profile = await get_tg_profile(db, user_id, phone)
 
     if not profile:
         return {"status": "error", "message": "Профиль не найден"}
@@ -43,7 +39,7 @@ async def _prepare_client_for_profile(
             "message": "Сначала запроси код через /auth/start",
         }
 
-    client, session_record = await _get_client(db, phone=phone)
+    client, session_record = await _get_client(db, phone)
 
     if not client.is_connected():
         await client.connect()
@@ -51,14 +47,11 @@ async def _prepare_client_for_profile(
     return profile, client, session_record
 
 
-async def _get_client(db: AsyncSession, profile_username: str | None = None, phone: str | None = None):
+async def _get_client(db: AsyncSession, phone: str):
     """Получить клиент Telethon из StringSession"""
 
     # Получаем сессию из БД
-    if profile_username:
-        session_record = await get_tg_session(db, profile_username)
-    else:
-        session_record = await get_tg_session_by_phone(db, phone)
+    session_record = await get_tg_session(db, phone)
 
     # Используем существующую сессию или создаем пустую
     session_string = session_record.session_string if session_record else None
@@ -86,14 +79,14 @@ async def start_auth(db: AsyncSession, user_id: int, phone: str):
             }
 
         # Получить профиль текущего пользователя по этому номеру
-        profile = await get_profile_by_user_and_phone(db, user_id, phone)
+        profile = await get_tg_profile(db, user_id, phone)
 
         if profile and profile.is_authorized:
-            logger.info(f"User {user_id} already authorized profile {profile.username}")
+            logger.info(f"User {user_id} already authorized profile {phone}")
             return {
                 "status": "already_authorized",
                 "message": "Этот профиль уже авторизован",
-                "profile_username": profile.username,
+                "phone": phone,
             }
 
         if not profile:
@@ -104,23 +97,23 @@ async def start_auth(db: AsyncSession, user_id: int, phone: str):
                 is_authorized=False,
             )
 
-        client, session_record = await _get_client(db, profile.username)
+        client, session_record = await _get_client(db, phone)
 
         if not client.is_connected():
             await client.connect()
 
         # Если уже авторизован в Telethon
         if await client.is_user_authorized():
-            profile = await update_profile(
+            await update_profile(
                 db,
                 profile,
                 is_authorized=True,
             )
-            logger.info(f"User {user_id} already authorized profile {profile.username}")
+            logger.info(f"User {user_id} already authorized profile {phone}")
             return {
                 "status": "already_authorized",
                 "message": "Профиль уже авторизован в Telegram",
-                "profile_username": profile.username,
+                "phone": phone,
             }
 
         # Отправить код
@@ -153,7 +146,7 @@ async def start_auth(db: AsyncSession, user_id: int, phone: str):
 async def verify_code(db: AsyncSession, user_id: int, phone: str, code: str):
     """Подтвердить код"""
     try:
-        result = await _prepare_client_for_profile(db, user_id, phone=phone)
+        result = await _prepare_client_for_profile(db, user_id, phone)
 
         # Если вернулся словарь — это ошибка, сразу отдаём в ответ
         if isinstance(result, dict):
@@ -186,7 +179,6 @@ async def verify_code(db: AsyncSession, user_id: int, phone: str, code: str):
         return {
             "status": "success",
             "message": "Авторизация успешна",
-            "profile_username": profile.username,
             "phone": profile.phone,
             "username": me.username
         }
@@ -199,7 +191,7 @@ async def verify_code(db: AsyncSession, user_id: int, phone: str, code: str):
 async def verify_password(db: AsyncSession, user_id: int, phone: str, password: str):
     """Подтвердить пароль 2FA"""
     try:
-        result = await _prepare_client_for_profile(db, user_id, phone=phone)
+        result = await _prepare_client_for_profile(db, user_id, phone)
 
         # Если вернулся словарь — это ошибка, сразу отдаём в ответ
         if isinstance(result, dict):
@@ -229,7 +221,7 @@ async def verify_password(db: AsyncSession, user_id: int, phone: str, password: 
         return {
             "status": "success",
             "message": "Авторизация успешна",
-            "profile_username": profile.username
+            "phone": phone
         }
 
     except Exception as e:

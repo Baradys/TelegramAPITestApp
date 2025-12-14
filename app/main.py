@@ -1,4 +1,3 @@
-import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
@@ -23,7 +22,7 @@ def get_application():
     application = FastAPI(
         title="API Service",
         description="Telegram API Service for message management",
-        version="1.0.0",
+        version="1.0.1",
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
