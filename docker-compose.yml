@@ -1,5 +1,5 @@
 services:
-  api:
+  tg_messages.api:
     container_name: tg_messages.api
     build:
       context: .
@@ -7,12 +7,12 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      - tg_messages.db
     env_file:
       - .env
     restart: unless-stopped
 
-  db:
+  tg_messages.db:
     container_name: tg_messages.db
     image: postgres:16
     ports:
@@ -25,6 +25,17 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
     restart: unless-stopped
 
+#  tg_messages.vector:
+#    image: timberio/vector:latest-alpine
+#    container_name: tg_messages.vector
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock
+#      - ./vector.yaml:/etc/vector/vector.yaml
+#    env_file:
+#      - .env
+#    restart: unless-stopped
+#    depends_on:
+#      - tg_messages.api
 
 volumes:
   tg_data:

@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status, Cookie, Response
+from fastapi import Depends, HTTPException, status, Cookie, Response, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
@@ -86,6 +86,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
 
 
 async def get_current_user(
+        request: Request,
         credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
         access_token: Optional[str] = Cookie(None),
         db: AsyncSession = Depends(get_db)
@@ -143,7 +144,7 @@ async def get_current_user(
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
+    request.state.user = user
     return user
 
 

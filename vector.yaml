@@ -1,0 +1,38 @@
+sources:
+  docker_logs:
+    type: docker_logs
+    docker_host: /var/run/docker.sock
+
+transforms:
+  parse_tg_messages_logs:
+    type: remap
+    inputs: [ "docker_logs" ]
+    source: |
+      parsed_log, err = parse_json(.message)
+      if err == null && contains!(.container_name, "tg_messages.api") {
+        .level = parsed_log.level
+        .timestamp = parsed_log.time
+        .http_code = parsed_log.http_code
+        .username = parsed_log.username
+        .user_ip = parsed_log.user_ip
+        .request_method = parsed_log.request_method
+        .request_url = parsed_log.request_url
+        .request_duration_ms = parsed_log.request_duration_ms
+      } else {
+        abort
+      }
+      
+
+sinks:
+  clickhouse_tg_messages_sink:
+    type: clickhouse
+    inputs:
+      - parse_tg_messages_logs
+    endpoint: ${CLICKHOUSE_URL}
+    database: logs
+    table: tg_messages_logs
+
+    auth:
+      strategy: basic
+      user: ${CLICKHOUSE_USER}
+      password: ${CLICKHOUSE_PASSWORD}

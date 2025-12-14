@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.db.base import Base
 from app.db.database import engine
+from app.middleware.logging import LoggingMiddleware
 from app.routers.router import router
 
 
@@ -30,6 +31,8 @@ def get_application():
     )
 
     application.include_router(router)
+    application.add_middleware(LoggingMiddleware)
+
     return application
 
 

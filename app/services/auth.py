@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from telethon import TelegramClient
@@ -10,10 +9,6 @@ from app.db.profile.requests import get_profile_by_phone, get_profile_by_user_an
     get_tg_profile, get_users_profiles
 from app.db.session.requests import get_tg_session, update_session, create_tg_session
 from app.db.user.requests import get_user_by_id
-
-SESSIONS_DIR = "app/sessions"
-
-Path(SESSIONS_DIR).mkdir(exist_ok=True)
 
 settings = get_settings()
 
@@ -239,7 +234,7 @@ async def verify_password(db: AsyncSession, user_id: int, profile_username: str,
 async def get_user_profiles(db: AsyncSession, user_id: int):
     """Получить все профили пользователя"""
     try:
-        profiles = await  get_users_profiles(db, user_id)
+        profiles = await get_users_profiles(db, user_id)
         logger.info(f"User {user_id} got profiles: {profiles}")
         return {
             "status": "success",

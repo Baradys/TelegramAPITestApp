@@ -22,8 +22,23 @@ class Settings(BaseSettings):
     SECURE_COOKIES: bool = True
     DEBUG: bool = False
 
-    class Config:
+    class ConfigDict:
         env_file = "example.env"
+
+
+    @classmethod
+    def for_testing(cls):
+        """Создание тестовых настроек"""
+        return cls(
+            API_ID=123456,
+            API_HASH="test_api_hash",
+            DATABASE_URL="localhost",
+            DATABASE_PORT="5432",
+            DATABASE_NAME="test_db",
+            DATABASE_USER="test_user",
+            DATABASE_PASSWORD="test_pass",
+            SECRET_KEY="test_secret_key"
+        )
 
 
 @lru_cache()
