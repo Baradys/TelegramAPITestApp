@@ -4,7 +4,6 @@ from fastapi import FastAPI
 
 from app.db.base import Base
 from app.db.database import engine
-from app.db.redis import init_redis, close_redis
 from app.routers.router import router
 
 
@@ -15,14 +14,8 @@ async def init_models():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Startup
     await init_models()  # создаём таблицы асинхронно
-    await init_redis()
-
     yield
-
-    # Shutdown
-    await close_redis()
 
 
 def get_application():

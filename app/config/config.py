@@ -14,16 +14,16 @@ class Settings(BaseSettings):
     DATABASE_USER: str
     DATABASE_PASSWORD: str
 
-    # Redis
-    REDIS_URL: str
-
     # API
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
+    ACCESS_TOKEN_EXPIRE_DAYS: int = 1
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    SECURE_COOKIES: bool = True
+    DEBUG: bool = False
 
     class Config:
-        env_file = ".env"
+        env_file = "example.env"
 
 
 @lru_cache()

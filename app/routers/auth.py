@@ -5,15 +5,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 
+from app.config.config import get_settings
 from app.db.database import get_db
 from app.db.user.models import User
 from app.db.user.requests import get_app_user, create_user
-from app.middleware.jwt import create_access_token, get_current_user
+from app.middleware.jwt import create_access_token, get_current_user, create_tokens, set_auth_cookies
 from app.models.request_model import RegisterRequest, LoginRequest, PasswordRequest
 from app.services.auth import verify_password
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+settings = get_settings()
 
 
 class AuthRouter:
@@ -38,22 +41,15 @@ class AuthRouter:
             password_hash = hashlib.sha256(payload.password.encode()).hexdigest()
             user = await create_user(db, payload.email, password_hash)
 
-            token = create_access_token(user.id)
+            tokens = create_tokens(user.id)
 
             logger.info(f"User {payload.email} registered")
 
             response = JSONResponse(
-                content={"detail": "registered"},  # можешь вернуть что угодно
+                content={"detail": "registered"},
                 status_code=201,
             )
-            response.set_cookie(
-                key="access_token",
-                value=token,
-                httponly=True,
-                secure=False,
-                samesite="lax",
-                max_age=60 * 60 * 24
-            )
+            set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
             return response
 
         except Exception as e:
@@ -70,7 +66,7 @@ class AuthRouter:
             password_hash = hashlib.sha256(payload.password.encode()).hexdigest()
             if not user or user.password_hash != password_hash:
                 raise HTTPException(status_code=401, detail="Invalid credentials")
-            token = create_access_token(user.id)
+            tokens = create_tokens(user.id)
 
             logger.info(f"User {payload.email} logged in")
 
@@ -78,14 +74,7 @@ class AuthRouter:
                 content={"detail": "logged in"},
                 status_code=201,
             )
-            response.set_cookie(
-                key="access_token",
-                value=token,
-                httponly=True,
-                secure=False,
-                samesite="lax",
-                max_age=60 * 60 * 24
-            )
+            set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
             return response
 
         except Exception as e:

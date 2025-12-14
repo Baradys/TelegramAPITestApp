@@ -5,7 +5,7 @@ import logging
 
 from app.db.profile.requests import get_tg_profile, update_profile
 from app.db.session.requests import get_tg_session, update_session
-from app.services.auth import get_client
+from app.services.auth import _get_client
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ async def _prepare_authorized_client(
     if not session:
         return {"status": "error", "message": "Сессия не найдена"}, None, None
 
-    client, session_record = await get_client(db, profile_username)
+    client, session_record = await _get_client(db, profile_username)
 
     try:
         await client.connect()
