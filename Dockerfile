@@ -1,4 +1,3 @@
-# Используем официальный Python-образ
 FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y \
@@ -16,6 +15,9 @@ COPY . /app
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
+
+# Запуск тестов с выходом при ошибке
+RUN pytest tests/ -v --tb=short || exit 1
 
 EXPOSE 8000
 
