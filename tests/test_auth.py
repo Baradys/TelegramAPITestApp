@@ -66,7 +66,6 @@ async def test_start_auth_success(mock_db, mock_user, mock_profile, mock_client,
             patch('app.services.auth.get_profile_by_user_and_phone', new_callable=AsyncMock) as mock_get_profile, \
             patch('app.services.auth.create_profile', new_callable=AsyncMock) as mock_create_profile, \
             patch('app.services.auth._get_client', new_callable=AsyncMock) as mock_get_client, \
-            patch('app.services.auth.create_tg_session', new_callable=AsyncMock) as mock_create_session, \
             patch('app.services.auth.update_profile', new_callable=AsyncMock) as mock_update_profile:
         mock_get_user.return_value = mock_user
         mock_get_profile_by_phone.return_value = None
@@ -92,7 +91,7 @@ async def test_verify_code_profile_not_found(mock_db, fake_logger):
     with patch('app.services.auth.get_tg_profile', new_callable=AsyncMock) as mock_get_profile:
         mock_get_profile.return_value = None
 
-        result = await verify_code(mock_db, user_id=1, profile_username="test", code="12345")
+        result = await verify_code(mock_db, user_id=1, code="12345", phone="+1234567890")
 
         assert result["status"] == "error"
         assert "Профиль не найден" in result["message"]
@@ -106,7 +105,7 @@ async def test_verify_code_no_phone_code_hash(mock_db, mock_profile, fake_logger
     mock_get_profile = AsyncMock(return_value=mock_profile)
 
     with patch('app.services.auth.get_tg_profile', mock_get_profile):
-        result = await verify_code(mock_db, user_id=1, profile_username="test", code="12345")
+        result = await verify_code(mock_db, user_id=1, code="12345", phone="+1234567890")
 
         assert result["status"] == "error"
         assert "запроси код" in result["message"]
@@ -126,7 +125,7 @@ async def test_verify_code_success(mock_db, mock_profile, mock_client, fake_logg
         mock_get_client.return_value = (mock_client, session_record)
         mock_update_profile.return_value = mock_profile
 
-        result = await verify_code(mock_db, user_id=1, profile_username="test", code="12345")
+        result = await verify_code(mock_db, user_id=1, code="12345", phone='1234567890')
 
         assert result["status"] == "success"
         mock_client.sign_in.assert_called_once()
@@ -144,7 +143,7 @@ async def test_verify_code_invalid_code(mock_db, mock_profile, mock_client, fake
         mock_get_profile.return_value = mock_profile
         mock_get_client.return_value = (mock_client, session_record)
 
-        result = await verify_code(mock_db, user_id=1, profile_username="test", code="99999")
+        result = await verify_code(mock_db, user_id=1, code="99999", phone='+1234567890')
 
         assert result["status"] == "error"
 

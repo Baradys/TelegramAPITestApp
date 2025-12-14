@@ -16,12 +16,12 @@ class PhoneRequest(BaseModel):
 
 
 class CodeRequest(BaseModel):
-    profile_username: str
+    phone: str
     code: str
 
 
 class PasswordRequest(BaseModel):
-    profile_username: str
+    phone: str
     password: str
 
 

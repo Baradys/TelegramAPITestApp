@@ -7,11 +7,9 @@ from starlette.responses import JSONResponse
 
 from app.config.config import get_settings
 from app.db.database import get_db
-from app.db.user.models import User
 from app.db.user.requests import get_app_user, create_user
-from app.middleware.jwt import create_access_token, get_current_user, create_tokens, set_auth_cookies
-from app.models.request_model import RegisterRequest, LoginRequest, PasswordRequest
-from app.services.auth import verify_password
+from app.middleware.jwt import create_tokens, set_auth_cookies
+from app.models.request_model import RegisterRequest, LoginRequest
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,7 +25,6 @@ class AuthRouter:
     def _register_routes(self):
         self.router.post("/auth/register")(self.register)
         self.router.post("/auth/login")(self.login)
-        self.router.post("/auth/password")(self.password)
 
     @staticmethod
     async def register(
@@ -80,17 +77,3 @@ class AuthRouter:
         except Exception as e:
             logger.error(f"Login error: {e}")
             raise HTTPException(status_code=401, detail=str(e))
-
-    @staticmethod
-    async def password(
-            request: PasswordRequest,
-            user: User = Depends(get_current_user),
-            db: AsyncSession = Depends(get_db)
-    ):
-        """Подтвердить пароль 2FA"""
-        result = await verify_password(db, user.id, request.profile_username, request.password)
-
-        if result["status"] != "success":
-            raise HTTPException(status_code=400, detail=result["message"])
-
-        return result

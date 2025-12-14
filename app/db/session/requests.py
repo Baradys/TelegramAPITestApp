@@ -19,6 +19,25 @@ async def create_tg_session(
         await session.commit()
 
 
+async def get_tg_session_by_phone(
+        session: AsyncSession,
+        phone: str,
+) -> TelegramSession:
+    stmt = (
+        select(TelegramSession)
+        .join(
+            TelegramProfile,
+            TelegramProfile.id == TelegramSession.profile_id,
+        )
+        .where(
+            TelegramProfile.phone == phone,
+            TelegramSession.is_active.is_(True),
+        )
+    )
+    async with session as session:
+        result = await session.execute(stmt)
+        return result.unique().scalar()
+
 async def get_tg_session(
         session: AsyncSession,
         profile_username: str,
